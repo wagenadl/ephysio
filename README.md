@@ -22,6 +22,6 @@ This module provides convenient access to continuous and event data saved by Ope
 
 Much more documentation is included in the module itself. Most users will want to use the Loader class rather than the various other functions.
 
-# Credits
+## Credits
 
-Developed and tested by DAW and Frank Lanfranchi
+Developed and tested by DAW and Frank Lanfranchi.
