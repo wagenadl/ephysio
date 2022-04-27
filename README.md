@@ -21,3 +21,7 @@ This module provides convenient access to continuous and event data saved by Ope
     plt.plot(ds*1000/fs_Hz, response) # plot data with time in ms on x-axis
 
 Much more documentation is included in the module itself. Most users will want to use the Loader class rather than the various other functions.
+
+# Credits
+
+Developed and tested by DAW and Frank Lanfranchi
