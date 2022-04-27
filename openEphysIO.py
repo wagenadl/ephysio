@@ -176,7 +176,6 @@ def contfilename(exptroot, expt=1, rec=1, stream=0, infix='continuous', node=Non
     return ifn, tsfn, continfo
 
 def _continuousmetadata(tsfn, continfo):
-    print("Opening event file", tsfn)
     tms = np.load(tsfn, mmap_mode='r')
     s0 = tms[0]
     chlist = continfo['channels']
@@ -255,6 +254,42 @@ def loadcontinuous(exptroot, expt=1, rec=1, stream=0, infix='continuous', contfn
     if contfn is not None:
         ourcontfn = contfn
     return _doloadcontinuous(ourcontfn, tsfn, continfo)
+
+
+def _lameschmitt(dat, thr1, thr0):
+    high = dat>=thr1
+    high[0] = False
+    low = dat<=thr0
+    iup = []
+    idn = []
+    idx = 0
+    siz = len(dat)
+    while idx<siz:
+        didx = np.argmax(high[idx:])
+        if didx==0:
+            break
+        idx += didx
+        iup.append(idx)
+        didx = np.argmax(low[idx:])
+        if didx==0:
+            break
+        idx += didx
+        idn.append(idx)
+    if len(iup)>len(idn):
+        iup = iup[:-1]
+    return np.array(iup), np.array(idn)
+
+
+def loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
+    dat, _, _, _ = loadcontinuous(exptroot, expt, rec, stream, node=node)
+    dat = dat[:,channel]
+    thr = (np.min(dat) + np.max(dat)) / 2
+    iup, idn = _lameschmitt(dat, 1.1*thr, .9*thr)
+    
+    ss = np.stack((iup, idn), 1).flatten()
+    cc = channel + np.zeros(ss.shape, dtype=int)
+    st = np.stack((1 + 0*iup, -1 + 0*idn), 1).flatten()
+    return ss, cc, st
 
 
 def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0, ttl: str='TTL_1', node: int=None):
@@ -446,7 +481,7 @@ def _probablycntlbarcodes(sss, uds, f_Hz):
 
 def _cntlbarcodes(sss, uds):
     # This decodes bar codes from arduino code "stimbarcoduino"
-    ss_barc = []
+    codes = []
     times = []
 
     for ss, ud in zip(sss, uds):
@@ -464,12 +499,12 @@ def _cntlbarcodes(sss, uds):
                     code *= 2
                     if ds > thr:
                         code += 1
-                ss_barc.append(code)
+                codes.append(code)
                 times.append(s0)
         elif len(ss)>5:
             print(f'Likely faulty bar code of length {len(ss)} at {ss[0]}')
 
-    return times, ss_barc
+    return times, codes
 
 
 def _openephysbarcodes(sss, uds, f_Hz):
@@ -494,7 +529,7 @@ def _openephysbarcodes(sss, uds, f_Hz):
         else:
             print(f'Bar code dropped at {s0}')
 
-    ss_barc = []
+    codes = []
     times = []
     PERIOD = 120 * f_Hz / 30000
     N = len(sss_on)
@@ -513,9 +548,9 @@ def _openephysbarcodes(sss, uds, f_Hz):
             if k < K - 1:
                 for q in range(dtoff[k]):
                     bit *= 2
-                    ss_barc.append(value)
-                    times.append(sss_on[n][0])
-    return times, ss_barc
+        codes.append(value)
+        times.append(sss_on[n][0])
+    return times, codes
 
 
 def getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=1, newstyle=None):
@@ -545,7 +580,7 @@ def getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=1, newstyle=None):
     '''
     
     ss, ud = filterevents(ss_trl, bnc_cc, bnc_states, channel=channel, updown=0)
-    sss, uds = inferblocks(ss, t_split_s=.08, f_Hz=f_Hz, extra=ud)
+    sss, uds = inferblocks(ss, t_split_s=1, f_Hz=f_Hz, extra=ud)
     if newstyle is None:
         newstyle = _probablycntlbarcodes(sss, uds, f_Hz)
 
@@ -579,16 +614,41 @@ def loadtranslatedevents(exptroot, expt=1, rec=1,
                          targetttl='TTL_1',
                          sourcenode=None,
                          targetnode=None,
-                         newstylebarcodes=None):
+                         newstylebarcodes=None,
+                         sourcebarcodechannel=1):
     '''
-    LOADTRANSLATEDEVENTS - As  loadevents, but ss_trl is translated to 
+    LOADTRANSLATEDEVENTS - As LOADEVENTS, but ss_trl is translated to 
     samples in the target stream.
+    
+    Parameters
+    ----------
+    exptroot, expt, rec : as for loadevents
+    sourcestream: the stream from which the events will be loaded
+    targetstream: the stream into which the timestamps will be translated
+    newstylebarcodes: set to True to expect CNTL-style bar codes, False to
+        expect OpenEphys-style bar codes, or None to auto-detect.
+    sourcebarcodechannel: the digital input that the barcode generate is
+        connected on the source. Set to "A0" to "A7" to extract bar codes
+        from analog channels instead.
+
+    In addition, the following parameters have defaults that are usually sufficient:
+    sourcenode, targetnode: node identifiers for source and target streams
+    targetttl: the TTL group number for the target stream
+
     '''
     
     _, fs_Hz_src, _ = continuousmetadata(exptroot, expt, rec, stream=sourcestream)
-    (ss_trl, bnc_cc, bnc_states, fw) = loadevents(exptroot, s0=0, expt=expt, rec=rec, stream=sourcestream,
-                                                  node=sourcenode)
-    t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, fs_Hz_src, newstyle=newstylebarcodes)
+
+    if type(sourcebarcodechannel)==str and sourcebarcodechannel.startswith("A"):
+        sourcebarcodechannel=int(sourcebarcodechannel[1:])
+        ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
+                                                      node=sourcenode, channel=sourcebarcodechannel)
+        fw = bnc_states
+    else:
+        ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=0, expt=expt, rec=rec, stream=sourcestream,
+                                                    node=sourcenode)
+    t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, fs_Hz_src, newstyle=newstylebarcodes,
+                              channel=sourcebarcodechannel)
 
     _, fs_Hz_tgt, _ = continuousmetadata(exptroot, expt, rec, stream=targetstream)
     (ss1, cc1, vv1, fw1) = loadevents(exptroot, s0=None, expt=expt, rec=rec, stream=targetstream, ttl=targetttl,
@@ -604,6 +664,7 @@ def loadtranslatedevents(exptroot, expt=1, rec=1,
     fw = fw[idx]
     return ss_trl.astype(int), bnc_cc, bnc_states, fw
 
+
 class EventTranslator:
     '''EventTranslator transforms timestamps from one stream (e.g., a probe)
     to another stream (either another probe or the NIDAQ.'''
@@ -613,12 +674,19 @@ class EventTranslator:
                          targetstream='Neuropix-PXI-126.0',
                          targetttl='TTL_1',
                          sourcenode=None,
-                         targetnode=None):
+                         targetnode=None,
+                         sourcebarcodechannel=1):
 
         (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=sourcestream, node=sourcenode)
-        (ss_trl, bnc_cc, bnc_states, fw) = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=sourcestream,
-                                                      ttl=sourcettl, node=sourcenode)
-        t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz)
+        if type(sourcebarcodechannel)==str and sourcebarcodechannel.startswith("A"):
+            sourcebarcodechannel=int(sourcebarcodechannel[1:])
+            ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
+                                                          node=sourcenode, channel=sourcebarcodechannel)
+            fw = bnc_states
+        else:
+            ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=sourcestream,
+                                                          ttl=sourcettl, node=sourcenode)
+        t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=sourcebarcodechannel)
 
         (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=targetstream, node=targetnode)
         (ss1, cc1, vv1, fw1) = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=targetstream, ttl=targetttl,
@@ -764,6 +832,8 @@ class Loader:
         Parameters
         ----------
         root : location of data in the file system
+        cntlbarcodes: Whether to expect CNTL-style bar codes. (The alternative
+            is OpenEphys-style bar codes.)
         '''
 
         self.root = root
@@ -939,7 +1009,6 @@ class Loader:
             else:
                 for node in nodes:
                     probes = explorenodes(node)
-                    print(node, probes)
                     if len(probes):
                         self._nodemap[node] = probes
             self._streammap = {}
@@ -966,10 +1035,10 @@ class Loader:
         stream in Hertz. Optional experiments EXPT and REC specify the
         "experiment" and "recording", but those can usually be left out,
         as the sampling rate is generally consistent for a whole session.'''
-        node = self.autonode(stream, node)
+        node = self._autonode(stream, node)
         _populate(self._sfreqs, node, expt, rec)
         if stream not in self._sfreqs[node][expt][rec]:
-            info = self.oebinsection(expt, rec, stream=stream, node=node)
+            info = self._oebinsection(expt, rec, stream=stream, node=node)
             self._sfreqs[node][expt][rec][stream] = info['sample_rate']
         return self._sfreqs[node][expt][rec][stream]
             
@@ -981,16 +1050,21 @@ class Loader:
         By default, the file "continuous.dat" is loaded. Use optional
         argument STAGE to specify an alternative. (E.g., stage='salpa'
         for "salpa.dat".)'''
-        contfn = self.contfolder(stream, expt, rec, node)
+        contfn = self._contfolder(stream, expt, rec, node)
         contfn += f"/{stage}.dat"
         mm = np.memmap(contfn, dtype=np.int16, mode='r')
-        info = self.oebinsection(expt, rec, stream=stream, node=node)
+        info = self._oebinsection(expt, rec, stream=stream, node=node)
         C = info['num_channels']
         T = len(mm) // C
         return np.reshape(mm, [T, C])
 
     def channellist(self, stream, expt=1, rec=1, node=None):
-        info = self.oebinsection(expt, rec, stream=stream, node=node)
+        '''CHANNELLIST - List of channels for a stream
+        CHANNELLIST(stream) returns the list of channels for that stream.
+        Each entry in the list is a dict with channel name and other 
+        information straight from the OEBIN file.
+        Optional arguments EXPT, REC, and NODE further specify.'''
+        info = self._oebinsection(expt, rec, stream=stream, node=node)
         return info['channels']
 
     def events(self, stream, expt=1, rec=1, node=None):
@@ -1000,14 +1074,14 @@ class Loader:
         to 8) to Nx2 arrays of on and off sample times, measured from
         the beginning of the recording, so that they can be used
         directly as indices into the corresponding DATA().'''
-        node = self.autonode(stream, node)
+        node = self._autonode(stream, node)
         _populate(self._events, node, expt, rec)
         _populate(self._ss0, node, expt, rec)
         if stream not in self._events[node][expt][rec]:
-            tms = np.load(self.contfolder(stream, expt, rec, node)
+            tms = np.load(self._contfolder(stream, expt, rec, node)
                           + "/timestamps.npy")
             self._ss0[node][expt][rec][stream] = tms[0]
-            fldr = self.eventfolder(stream, expt, rec, node)
+            fldr = self._eventfolder(stream, expt, rec, node)
             ss_abs = np.load(f"{fldr}/timestamps.npy")
             ss = ss_abs - self._ss0[node][expt][rec][stream]
             cc = np.load(f"{fldr}/channels.npy")
@@ -1029,24 +1103,41 @@ class Loader:
                 self._events[node][expt][rec][stream][c] = myss
         return self._events[node][expt][rec][stream]
 
+    def _ensureanalogevents(self, stream, expt=1, rec=1, node=None, channel="A0"):
+        self.events(stream, expt, rec, node) # just to populate it
+        if channel in self._events[node][expt][rec][stream]:
+            return
+        ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
+        N = len(ss)
+        self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N//2, 2))
+    
     def barcodes(self, stream, expt=1, rec=1, node=None, channel=1):
-        node = self.autonode(stream, node)
+        '''BARCODES - Extract bar codes from a given stream
+        times, codes = BARCODES(stream) returns the time stamps and codes of the
+        bar codes associated with the given stream. Optional arguments EXPT, REC,
+        NODE further specify.
+        Optional argument CHANNEL specifies the digital channel from which the
+        bar codes are to be read. If CHANNEL is a string like "A0", the bar codes
+        are read from the given analog channel.'''
+        node = self._autonode(stream, node)
         _populate(self._barcodes, node, expt, rec)
         if stream not in self._barcodes[node][expt][rec]:
+            if type(channel)==str:
+                self._ensureanalogevents(stream, expt, rec, node, channel)
             evts = self.events(stream, expt, rec, node)[channel]
             fs = self.samplingrate(stream, expt, rec, node)
             ss_on = evts[:,0]
             ss_off = evts[:,1]
-            sss_on, sss_off = inferblocks(ss_on, fs, t_split_s=0.080, extra=ss_off)
+            sss_on, sss_off = inferblocks(ss_on, fs, t_split_s=1, extra=ss_off)
             sss = [np.stack((son,sof),1).flatten()
                    for son,sof in zip(sss_on, sss_off)]
             uds = [np.stack((np.ones(son.shape),
-                             np.zeros(son.shape)),1).flatten()
+                             -np.ones(son.shape)),1).flatten()
                    for son in sss_on]
             if self.cntlbarcodes:
                 tt, vv = _cntlbarcodes(sss, uds)
             else:
-                tt, vv = _openephysbarcodes(sss, uds)
+                tt, vv = _openephysbarcodes(sss, uds, fs)
             self._barcodes[node][expt][rec][stream] = (tt, vv)
         return self._barcodes[node][expt][rec][stream]
                 
@@ -1059,7 +1150,9 @@ class Loader:
         the DEST stream. Operates on the first experiment/recording
         unless EXPT and REC are specified.
         This relies on the existence of "bar codes" in one of the
-        event channels of both streams.'''
+        event channels of both streams.
+        SOURCEBARCODE and DESTBARCODE specify bar code channels.
+        Analog channels are supported.'''
         ss1, bb1 = self.barcodes(sourcestream, expt, rec,
                                  sourcenode, sourcebarcode)
         ss2, bb2 = self.barcodes(deststream, expt, rec,
@@ -1072,7 +1165,9 @@ class Loader:
         '''NIDAQEVENTS - NIDAQ events translated to given stream
         NIDAQEVENTS is a convenience function that first calls EVENTS
         on the NIDAQ stream, then SHIFTTIME to convert those events
-        to the time base of the given STREAM.'''
+        to the time base of the given STREAM.
+        NIDAQBARCODE and DESTBARCODE are the digital (or analog)
+        channel that contain bar codes.'''
         if nidaqstream is None:
             nidaqstream = self.nidaqstream()
         events = self.events(nidaqstream, expt, rec)
