@@ -531,23 +531,28 @@ def _openephysbarcodes(sss, uds, f_Hz):
 
     codes = []
     times = []
-    PERIOD = 120 * f_Hz / 30000
+    PREDURATION_MS = 20
+    INTER_BARCODE_INTERVAL_S = 30
+    BARCODE_BITS = 32
+    BITDURATION_MS = (INTER_BARCODE_INTERVAL_S - 1) * 32 / BARCODE_BITS
+    # See https://github.com/open-ephys/sync-barcodes/blob/main/arduino-barcodes/arduino-barcodes.ino line 37.
+    PERIOD = BITDURATION_MS * f_Hz / 1000
     N = len(sss_on)
-    for n in range(N):
-        dton = sss_off[n] - sss_on[n]
+    for n in range(N): # Loop over all the codes
+        dton = sss_off[n][1:] - sss_on[n][1:] # Skip first pulse
         dtoff = sss_on[n][1:] - sss_off[n][:-1]
+        dtoff[0] -= PREDURATION_MS * f_Hz/1000
         dton = np.round(dton / PERIOD).astype(int)
         dtoff = np.round(dtoff / PERIOD).astype(int)
         value = 0
         K = len(dton)
         bit = 1
         for k in range(K):
+            for q in range(dtoff[k]):
+                bit *= 2
             for q in range(dton[k]):
                 value += bit
                 bit *= 2
-            if k < K - 1:
-                for q in range(dtoff[k]):
-                    bit *= 2
         codes.append(value)
         times.append(sss_on[n][0])
     return times, codes
