@@ -541,7 +541,7 @@ def _openephysbarcodes(sss, uds, f_Hz):
     for n in range(N): # Loop over all the codes
         dton = sss_off[n][1:] - sss_on[n][1:] # Skip first pulse
         dtoff = sss_on[n][1:] - sss_off[n][:-1]
-        dtoff[0] -= PREDURATION_MS * f_Hz/1000
+        dtoff[0] -= PREDURATION_MS * f_Hz/1000 # First interval start marker
         dton = np.round(dton / PERIOD).astype(int)
         dtoff = np.round(dtoff / PERIOD).astype(int)
         value = 0
