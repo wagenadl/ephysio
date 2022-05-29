@@ -1162,9 +1162,8 @@ class Loader:
                                  sourcenode, sourcebarcode)
         ss2, bb2 = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
-        ss1, ss2 = matchbarcodes(ss1, bb1, ss2, bb2)
+        ss1_matched, ss2_matched = matchbarcodes(ss1, bb1, ss2, bb2)
         
-        """DJP"""
         # Interpolation: Times after the first barcode and before the last:
         times_within = times[(times > ss1[0]) & (times < ss1[-1])]
         
@@ -1178,7 +1177,7 @@ class Loader:
         aft_t = [] # after
         
         # Interpolate
-        if len(ss1_matched) > 0 and (len(ss1) == len(ss2)):
+        if len(ss1_matched) > 0
             win_t = np.interp(times_within, ss1_matched, ss2_matched)
         else:
             # Due to catastrophic failure to match
