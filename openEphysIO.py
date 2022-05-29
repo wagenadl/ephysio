@@ -813,6 +813,9 @@ def _populate(dct, *args):
 
 
 def _quickglob(pattern):
+    pattern = pattern.replace("//", "/")
+    if pattern[-1]=='/':
+        pattern = pattern[:-1]
     idx = None
     for k, bit in enumerate(pattern.split("/")):
         if "*" in bit:
@@ -881,11 +884,12 @@ class Loader:
         STREAMS() returns a list of all stream names, spike, LFP, or
         otherwise.'''
         if self._streams is None:
-            self._streams = []
+            sss = []
             for ss in self.nodemap().values():
-                self._streams += ss
-            self._streams = list(set(self._streams))
-            self._streams.sort()
+                sss += ss
+            sss = list(set(sss))
+            sss.sort()
+            self._streams = sss
         return self._streams
 
     def spikestreams(self):
@@ -1007,22 +1011,23 @@ class Loader:
         
         if self._nodemap is None:
             nodes = _quickglob(f"{self.root}/*")
-            self._nodemap = {}
+            nodemap = {}
             if any([node.startswith("experiment") for node in nodes]):
                 # Old style without explicit nodes
-                self._nodemap[None] = explorenodes(None)
+                nodemap[None] = explorenodes(None)
             else:
                 for node in nodes:
                     probes = explorenodes(node)
                     if len(probes):
-                        self._nodemap[node] = probes
-            self._streammap = {}
-            for node, streams in self._nodemap.items():
+                        nodemap[node] = probes
+            streammap = {}
+            for node, streams in nodemap.items():
                 for stream in streams:
-                    if stream not in self._streammap:
-                        self._streammap[stream] = []
-                    self._streammap[stream].append(node)
-                    
+                    if stream not in streammap:
+                        streammap[stream] = []
+                    streammap[stream].append(node)
+            self._nodemap = nodemap
+            self._streammap = streammap
         return self._nodemap
 
     def streammap(self):
@@ -1163,6 +1168,8 @@ class Loader:
         ss2, bb2 = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
         ss1_matched, ss2_matched = matchbarcodes(ss1, bb1, ss2, bb2)
+        if len(ss1_matched) < 2 + .2*(len(ss1) + len(ss1))/2:
+            raise Exception("Not enough matched bar codes")
         
         # Interpolation: Times after the first barcode and before the last:
         times_within = times[(times > ss1[0]) & (times < ss1[-1])]
@@ -1171,29 +1178,25 @@ class Loader:
         times_before = times[times < ss1[0]]
         times_after = times[times > ss1[-1]]
         
-        # holder variables to be concatenated on output
-        win_t = [] # within
-        bef_t = [] # before
-        aft_t = [] # after
-        
         # Interpolate
-        if len(ss1_matched) > 0
-            win_t = np.interp(times_within, ss1_matched, ss2_matched)
-        else:
-            # Due to catastrophic failure to match
-            win_t = np.interp(times_within, ss1, ss2)
+        t_within = np.interp(times_within, ss1_matched, ss2_matched)
         
         # Extrapolate
-        if len(ss1) != len(ss2):
-            raise Exception("barcode lengths do not match")
-            
-        a_bef, b_bef = np.polyfit(ss1[:2], ss2[:2], 1)
-        a_aft, b_aft = np.polyfit(ss1[-2:], ss2[-2:], 1)
+        if len(times_before):
+            print(f"Caution: Extrapolation {times_before} event(s) before start of bar codes")
+            a_before, b_before = np.polyfit(ss1[:2], ss2[:2], 1)
+            t_before = a_before * times_before + b_before
+        else:
+            t_before = []
+
+        if len(times_after):
+            print(f"Caution: Extrapolation {times_after} event(s) after end of bar codes")
+            a_after, b_after = np.polyfit(ss1[-2:], ss2[-2:], 1)
+            t_after = a_after * times_after +  b_after
+        else:
+            t_after = []
         
-        bef_t = a_bef * times_before + b_bef
-        aft_t = a_aft * times_after +  b_aft
-        
-        return np.concatenate([bef_t, win_t, aft_t])
+        return np.concatenate([t_before, t_within, t_after])
         
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1):
