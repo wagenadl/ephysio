@@ -1163,7 +1163,38 @@ class Loader:
         ss2, bb2 = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
         ss1, ss2 = matchbarcodes(ss1, bb1, ss2, bb2)
-        return np.interp(times, ss1, ss2)
+        
+        """DJP"""
+        # Interpolation: Times after the first barcode and before the last:
+        times_within = times[(times > ss1[0]) & (times < ss1[-1])]
+        
+        # Extrapolation:  Times before the first barcode and after the last
+        times_before = times[times < ss1[0]]
+        times_after = times[times > ss1[-1]]
+        
+        # holder variables to be concatenated on output
+        win_t = [] # within
+        bef_t = [] # before
+        aft_t = [] # after
+        
+        # Interpolate
+        if len(ss1_matched) > 0 and (len(ss1) == len(ss2)):
+            win_t = np.interp(times_within, ss1_matched, ss2_matched)
+        else:
+            # Due to catastrophic failure to match
+            win_t = np.interp(times_within, ss1, ss2)
+        
+        # Extrapolate
+        if len(ss1) != len(ss2):
+            raise Exception("barcode lengths do not match")
+            
+        a_bef, b_bef = np.polyfit(ss1[:2], ss2[:2], 1)
+        a_aft, b_aft = np.polyfit(ss1[-2:], ss2[-2:], 1)
+        
+        bef_t = a_bef * times_before + b_bef
+        aft_t = a_aft * times_after +  b_aft
+        
+        return np.concatenate([bef_t, win_t, aft_t])
         
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1):
