@@ -1103,12 +1103,15 @@ class Loader:
                 N = len(idx)
                 myss = ss[idx]
                 mydelta = delta[idx]
-                if mydelta[0]<0:
-                    raise Exception("First event edge should be up")
-                if mydelta[-1]>0:
-                    raise Exception("Last event edge should be down")
+                if len(myss) and mydelta[0]<0:
+                    myss = myss[1:]
+                    mydelta = mydelta[1:]
+                if len(myss) and mydelta[-1]>0:
+                    myss = myss[:-1]
+                    mydelta = mydelta[:-1]
                 if np.any(np.diff(mydelta)==0):
                     raise Exception("Event edges should alternate")
+                N = len(myss)
                 myss = myss.reshape(N//2, 2) 
                 self._events[node][expt][rec][stream][c] = myss
         return self._events[node][expt][rec][stream]
@@ -1168,7 +1171,7 @@ class Loader:
         ss2, bb2 = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
         ss1_matched, ss2_matched = matchbarcodes(ss1, bb1, ss2, bb2)
-        if len(ss1_matched) < 2 + .2*(len(ss1) + len(ss1))/2:
+        if len(ss1_matched) < 2 + .2*(len(ss1) + len(ss2))/2:
             raise Exception("Not enough matched bar codes")
         
         # Interpolation: Times after the first barcode and before the last:
