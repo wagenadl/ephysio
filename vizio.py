@@ -57,7 +57,7 @@ class _EPhysView(QWidget):
         self.margin_top = 20
         self.margin_bottom = 20
         self.ticklen = 3
-        self.tstim_s = []
+        self.tstim_s = np.array([])
         self.stimlabels = []
         self.spikes = [] # List of (c, tt) pairs
         super().__init__(parent)
@@ -331,7 +331,7 @@ class _EPhysView(QWidget):
         tt = self.tstim_s
         xx = tt2x(tt[np.logical_and(tt>=t0, tt<t1)])
         if len(xx):
-            ptr.setPen(QColor(255,0,0), 2)
+            ptr.setPen(QPen(QColor(255,0,0), 2))
             for x in xx:
                 ptr.drawLine(QPoint(x,y0), QPoint(x,y0+h))
                 
