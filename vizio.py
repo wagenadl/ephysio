@@ -96,7 +96,7 @@ class _EPhysView(QWidget):
         SETSTIMULI(tt, labels) where LABELS is a list of labels that
         has the same length as TT also provides labels for the vis_stimuli.'''
         
-        self.tstim_s = tt_s
+        self.tstim_s = np.array(tt_s)
         self.stimlabels = labels
         self.update()
 
@@ -233,9 +233,10 @@ class _EPhysView(QWidget):
 
         self._drawTimeAxis(ptr, t2x, sensiblestep(self.tscale_s/(1 + w/200)), h)
         self._drawChannelNames(ptr, cv2y)
+        self._drawStimuli(ptr, tt2x, self.margin_top, h)
+        self._drawSpikes(ptr, tt2x, cv2y)
         if self.mem is not None:
             self._drawEphysTraces(ptr, t2x, cv2y, w , h)
-        self._drawSpikes(ptr, tt2x, cv2y)
 
     def _drawTimeAxis(self, ptr, t2x, ttick, h):
         t0 = np.ceil(self.t0_s/ttick) * ttick
@@ -324,6 +325,16 @@ class _EPhysView(QWidget):
                 aa[:,1] = cv2y(c) - yy * yscl
                 ptr.drawPolyline(poly)
 
+    def _drawStimuli(self, ptr, tt2x, y0, h):
+        t0 = self.t0_s
+        t1 = self.t0_s+self.tscale_s
+        tt = self.tstim_s
+        xx = tt2x(tt[np.logical_and(tt>=t0, tt<t1)])
+        if len(xx):
+            ptr.setPen(QColor(255,0,0), 2)
+            for x in xx:
+                ptr.drawLine(QPoint(x,y0), QPoint(x,y0+h))
+                
     def _drawSpikes(self, ptr, tt2x, cv2y):
         t0 = self.t0_s
         t1 = self.t0_s+self.tscale_s
@@ -435,7 +446,7 @@ def viz(dat, fs_Hz, chlist=None, stims=None, spikes=None, self_contained=True):
     wdg = Viz()
     wdg.setData(dat, fs_Hz, chlist)
     if stims is not None:
-        wdg.setStimuli(stims / fs_Hz)
+        wdg.setStimuli(stims)
     if spikes is not None:
         wdg.setSpikes(spikes)
     if self_contained:
