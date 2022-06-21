@@ -1083,7 +1083,10 @@ class Loader:
         stream as a dict of event channel numbers (typically counted 1
         to 8) to Nx2 arrays of on and off sample times, measured from
         the beginning of the recording, so that they can be used
-        directly as indices into the corresponding DATA().'''
+        directly as indices into the corresponding DATA().
+        Ab initio, only conventional digital events are returned, but
+        after you call ANALOGEVENTS() on the stream, those are included
+        in the dict returned by EVENTS as well.'''
         node = self._autonode(stream, node)
         _populate(self._events, node, expt, rec)
         _populate(self._ss0, node, expt, rec)
@@ -1116,13 +1119,18 @@ class Loader:
                 self._events[node][expt][rec][stream][c] = myss
         return self._events[node][expt][rec][stream]
 
-    def _ensureanalogevents(self, stream, expt=1, rec=1, node=None, channel="A0"):
-        self.events(stream, expt, rec, node) # just to populate it
-        if channel in self._events[node][expt][rec][stream]:
-            return
-        ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
-        N = len(ss)
-        self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N//2, 2))
+    def analogevents(self, stream, channel="A0", expt=1, rec=1, node=None):
+        '''ANALOGEVENTS - Return virtual events from analog channel
+        ss = ANALOGEVENTS(stream, channel) treats the given channel (specified
+        in string form, e.g., "A0", or "A1", etc.) as if it were a digital
+        channel and returns an Nx2 array of on/off event time stamps.
+        '''
+        self.events(stream, expt, rec, node) # just to populate the dict
+        if channel not in self._events[node][expt][rec][stream]:
+            ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
+            N = len(ss)
+            self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N//2, 2))
+        return self._events[node][expt][rec][stream]
     
     def barcodes(self, stream, expt=1, rec=1, node=None, channel=1):
         '''BARCODES - Extract bar codes from a given stream
@@ -1136,7 +1144,7 @@ class Loader:
         _populate(self._barcodes, node, expt, rec)
         if stream not in self._barcodes[node][expt][rec]:
             if type(channel)==str:
-                self._ensureanalogevents(stream, expt, rec, node, channel)
+                self.analogevents(stream, channel, expt, rec, node)
             evts = self.events(stream, expt, rec, node)[channel]
             fs = self.samplingrate(stream, expt, rec, node)
             ss_on = evts[:,0]
@@ -1165,7 +1173,7 @@ class Loader:
         This relies on the existence of "bar codes" in one of the
         event channels of both streams.
         SOURCEBARCODE and DESTBARCODE specify bar code channels.
-        Analog channels are supported.'''
+        Analog channels are supported; see BARCODES.'''
         ss1, bb1 = self.barcodes(sourcestream, expt, rec,
                                  sourcenode, sourcebarcode)
         ss2, bb2 = self.barcodes(deststream, expt, rec,
