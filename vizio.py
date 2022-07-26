@@ -46,6 +46,8 @@ def sensiblestep(mx):
 class _EPhysView(QWidget):
     def __init__(self, parent=None):
         self.mem = None
+        # DJP edits
+        self.showTraces=True
         self.fs_Hz = None
         self.chlist = None
         self.tscale_s = .1
@@ -198,7 +200,9 @@ class _EPhysView(QWidget):
                 t1 = self.tstim_s[i]
                 self.t0_s =  max(0, t1 - self.tscale_s/4)
                 self.setWindowTitle(f'Stimulus #{i} at {t1:.3f}')
-                
+        # DJP edits
+        elif k==Qt.Key_E:
+            self.showTraces = not self.showTraces        
         else:
             return
         self.update()
@@ -235,7 +239,8 @@ class _EPhysView(QWidget):
         self._drawChannelNames(ptr, cv2y)
         self._drawStimuli(ptr, tt2x, self.margin_top, h)
         self._drawSpikes(ptr, tt2x, cv2y)
-        if self.mem is not None:
+        # DJP edit
+        if self.mem is not None and self.showTraces:
             self._drawEphysTraces(ptr, t2x, cv2y, w , h)
 
     def _drawTimeAxis(self, ptr, t2x, ttick, h):
@@ -361,7 +366,11 @@ class _EPhysView(QWidget):
                 for c in cc:
                     y = cv2y(c-.25)
                     for x in xx:
-                        ptr.drawEllipse(QRect(x-r, y-r, 2*r, 2*r))
+                        # DJP edit
+                        if self.showTraces:
+                            ptr.drawEllipse(QRect(x-r, y-r, 2*r, 2*r))
+                        else:
+                            ptr.drawRect(x, y, 1,6)
                     r = R//2
 
             
