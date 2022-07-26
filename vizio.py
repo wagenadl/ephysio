@@ -370,7 +370,7 @@ class _EPhysView(QWidget):
                         if self.showTraces:
                             ptr.drawEllipse(QRect(x-r, y-r, 2*r, 2*r))
                         else:
-                            ptr.drawRect(x, y, 1,6)
+                            ptr.drawRect(x, y-r/2, 1, r)
                     r = R//2
 
             
