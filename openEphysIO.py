@@ -813,7 +813,7 @@ def _populate(dct, *args):
 
 
 def _quickglob(pattern):
-    pattern = pattern.replace("//", "/")
+    # pattern = pattern.replace("//", "/")
     if pattern[-1]=='/':
         pattern = pattern[:-1]
     idx = None
