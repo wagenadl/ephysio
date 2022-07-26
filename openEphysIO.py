@@ -813,7 +813,13 @@ def _populate(dct, *args):
 
 
 def _quickglob(pattern):
-    # pattern = pattern.replace("//", "/")
+    # Replace "//" by "/" except at beginning or after ":"
+    bits = pattern.split(":")
+    nb = []
+    for bit in bits:
+        nb.append(bit[:1] + bit[1:].replace("//", "/"))
+    pattern = ":".join(nb)
+ 
     if pattern[-1]=='/':
         pattern = pattern[:-1]
     idx = None
