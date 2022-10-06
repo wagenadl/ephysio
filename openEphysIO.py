@@ -580,12 +580,11 @@ def getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=1, newstyle=None):
     Returns
     -------
     times : time stamps of starts of bar codes, in same units as ss_trl
-
-    ss_barc : decoded bar codes (16-bit integers)
+    codes : decoded bar codes (16-bit integers)
     '''
     
     ss, ud = filterevents(ss_trl, bnc_cc, bnc_states, channel=channel, updown=0)
-    sss, uds = inferblocks(ss, t_split_s=1, f_Hz=f_Hz, extra=ud)
+    sss, uds = inferblocks(ss, t_split_s=.08, f_Hz=f_Hz, extra=ud)
     if newstyle is None:
         newstyle = _probablycntlbarcodes(sss, uds, f_Hz)
 
@@ -598,6 +597,18 @@ def getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=1, newstyle=None):
 
 
 def matchbarcodes(ss1, bb1, ss2, bb2):
+    '''
+    MATCHBARCODES -
+    Parameters
+    ----------
+
+    Returns
+    -------
+
+    Notes
+    -----
+
+    '''
     sss1 = []
     sss2 = []
     N1 = len(ss1)
@@ -611,6 +622,24 @@ def matchbarcodes(ss1, bb1, ss2, bb2):
             print(f'Caution: no match for barcode #{n}')
             pass  # Barcode not matched
     return (sss1, sss2)
+
+
+def aligntimestamps(ss_event_nidaq, ss_ni, ss_np):
+    '''
+    GETBARCODES -
+    Parameters
+    ----------
+
+    Returns
+    -------
+
+    Notes
+    -----
+
+    '''
+
+    ss_event_neuropix = np.interp(ss_event_nidaq, ss_ni, ss_np)
+    # return ss_event_neuropix
 
 
 def loadtranslatedevents(exptroot, expt=1, rec=1,
@@ -1180,6 +1209,9 @@ class Loader:
         event channels of both streams.
         SOURCEBARCODE and DESTBARCODE specify bar code channels.
         Analog channels are supported; see BARCODES.'''
+
+        Perhaps this function should be called TRANSLATEEVENTTIME.
+
         ss1, bb1 = self.barcodes(sourcestream, expt, rec,
                                  sourcenode, sourcebarcode)
         ss2, bb2 = self.barcodes(deststream, expt, rec,
@@ -1214,7 +1246,38 @@ class Loader:
             t_after = []
         
         return np.concatenate([t_before, t_within, t_after])
-        
+
+    
+    def translatedata(self, data, t0, sourcestream, deststream, expt=1, rec=1,
+                      sourcenode=None, destnode=None,
+                      sourcebarcode=1, destbarcode=1):
+        '''TRANSLATEDATA - Translate a chunk of data from one timezone to another.
+        datad, t0d = TRANSLATEDATA(data, t0, source, dest) takes a chunk of data (vector of
+        arbitrary length N) that lives in the timezone of the SOURCE stream with time stamps
+        T0 up to T1 = T0+N, and reinterpolates it to the timezone of the DEST stream. The
+        function figures out the translations of T0 and T1 in the DEST stream. We call those T0D
+        and T1D. The function returns a vector of length M = T1D - T0D as well as T0D. Note that M
+        and T1D are not returned but can be directly inferred from T0D and the length of DATAD.
+        Note that Txx are sample time stamps, i.e., expressed in samples, not seconds.
+        See SHIFTTIME for other parameters and conditions.
+        '''
+        N = len(data)
+        t1 = t0 + N
+        # Figure out edges of interval in destination time zone
+        t01d = self.shifttime([t0, t1], sourcestream, deststream, expt, rec,
+                               sourcenode, destnode, sourcebarcode, destbarcode)
+        t0d = t01d[0]
+        t1d = t01d[1]
+        ttd = np.arange(t0d, t1d)
+        # Figure out timepoints in source time zone corresponding to interval in dest.
+        # Note backward translation
+        tts = self.shifttime(ttd, deststream, sourcestream, expt, rec,
+                             destnode, sourcenode, destbarcode, sourcebarcode)
+        # Interpolate the data
+        datad = np.interp(tts, np.arange(t0, t1), data)
+        return datad, t0d
+
+    
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1):
         '''NIDAQEVENTS - NIDAQ events translated to given stream
