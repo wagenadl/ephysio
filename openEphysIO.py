@@ -1208,9 +1208,9 @@ class Loader:
         This relies on the existence of "bar codes" in one of the
         event channels of both streams.
         SOURCEBARCODE and DESTBARCODE specify bar code channels.
-        Analog channels are supported; see BARCODES.'''
+        Analog channels are supported; see BARCODES.
 
-        Perhaps this function should be called TRANSLATEEVENTTIME.
+        Perhaps this function should be called TRANSLATEEVENTTIME.'''
 
         ss1, bb1 = self.barcodes(sourcestream, expt, rec,
                                  sourcenode, sourcebarcode)
