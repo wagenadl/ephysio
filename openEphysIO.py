@@ -172,7 +172,12 @@ def contfilename(exptroot, expt=1, rec=1, stream=0, infix='continuous', node=Non
     if subfldr.endswith('/'):
         subfldr = subfldr[:-1]
     ifn = f'{fldr}/continuous/{subfldr}/{infix}.dat'
-    tsfn = f'{fldr}/continuous/{subfldr}/timestamps.npy'
+    for fn in ['sample_numbers', 'timestamps']:
+        tsfn = f'{fldr}/continuous/{subfldr}/{fn}.npy'
+        if os.path.exists(tsfn):
+            break
+    if not os.path.exists(tsfn):
+        raise Exception("No time stamps")
     return ifn, tsfn, continfo
 
 def _continuousmetadata(tsfn, continfo):
@@ -344,9 +349,19 @@ def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0,
     fldr = f'{exptroot}/{node}/experiment{expt}/recording{rec}'
     evtinfo = streaminfo(exptroot, expt, rec, 'events', stream, ttl, node)
     subfldr = evtinfo['folder_name']
-    ss_trl = np.load(f'{fldr}/events/{subfldr}/timestamps.npy')
-    bnc_cc = np.load(f'{fldr}/events/{subfldr}/channels.npy')
-    bnc_states = np.load(f'{fldr}/events/{subfldr}/channel_states.npy')
+    ss_trl = None
+    for fn in ['sample_numbers', 'timestamps']:
+        tsfn = f'{fldr}/events/{subfldr}/{fn}.npy'
+        if os.path.exists(tsfn):
+            ss_trl = np.load(tsfn)
+    if os.path.exists(f'{fldr}/events/{subfldr}/states.npy'):
+        # v0.6.x style
+        bnc_states = np.load(f'{fldr}/events/{subfldr}/states.npy')
+        bnc_cc = np.abs(bnc_states)
+    else:
+        # v0.5.x style
+        bnc_cc = np.load(f'{fldr}/events/{subfldr}/channels.npy')
+        bnc_states = np.load(f'{fldr}/events/{subfldr}/channel_states.npy')
     fw = np.load(f'{fldr}/events/{subfldr}/full_words.npy')
     return (ss_trl - s0, bnc_cc, bnc_states, fw)
 
@@ -362,7 +377,7 @@ def filterevents(ss_trl, bnc_cc, bnc_states, channel=1, updown=1):
     bnc_cc : numpy.ndarray
         The event channel numbers associated with each event.
     bnc_states : numpy.ndarray
-        Contains +/-1 indicating whether the channel went up or down.
+        Contains +/-(ch) indicating whether the channel went up or down.
     channel : integer, default is 1
         The channel to use
     updown : integer, default is 1
@@ -1029,11 +1044,32 @@ class Loader:
         node = self._autonode(stream, node)
         return self._recfolder(node, expt, rec) + f"/continuous/{stream}"
 
+    def _contsamplestampfile(self, stream, expt=1, rec=1, node=None):
+        fldr = self._contfolder(stream, expt, rec, node)
+        for fn in ["sample_numbers", "timestamps"]:
+            if os.path.exists(f"{fldr}/{fn}.npy"):
+                return f"{fldr}/{fn}.npy"
+        raise Exception(f"No sample stamp file found for {stream} {expt}:{rec}")
+
     def _eventfolder(self, stream, expt=1, rec=1, node=None):
         node = self._autonode(stream, node)
         fldr = self._recfolder(node, expt, rec) + f"/events/{stream}"
-        ttl = _quickglob(f"{fldr}/TTL_*")
+        ttl = _quickglob(f"{fldr}/TTL*")
         return f"{fldr}/{ttl[0]}"
+
+    def _eventsamplestampfile(self, stream, expt=1, rec=1, node=None):
+        fldr = self._eventfolder(stream, expt, rec, node)
+        for fn in ["sample_numbers", "timestamps"]:
+            if os.path.exists(f"{fldr}/{fn}.npy"):
+                return f"{fldr}/{fn}.npy"
+        raise Exception(f"No sample stamp file found for {stream} {expt}:{rec}")
+
+    def _eventstatesfile(self, stream, expt=1, rec=1, node=None):
+        fldr = self._eventfolder(stream, expt, rec, node)
+        for fn in ["states", "channel_states"]:
+            if os.path.exists(f"{fldr}/{fn}.npy"):
+                return f"{fldr}/{fn}.npy"
+        raise Exception(f"No sample stamp file found for {stream} {expt}:{rec}")
 
     def nodemap(self):
         '''NODEMAP - Map of stream names per node
@@ -1126,14 +1162,13 @@ class Loader:
         _populate(self._events, node, expt, rec)
         _populate(self._ss0, node, expt, rec)
         if stream not in self._events[node][expt][rec]:
-            tms = np.load(self._contfolder(stream, expt, rec, node)
-                          + "/timestamps.npy")
+            tms = np.load(self._contsamplestampfile(stream, expt, rec, node))
             self._ss0[node][expt][rec][stream] = tms[0]
+            ss_abs = np.load(self._eventsamplestampfile(stream, expt, rec, node))
             fldr = self._eventfolder(stream, expt, rec, node)
-            ss_abs = np.load(f"{fldr}/timestamps.npy")
             ss = ss_abs - self._ss0[node][expt][rec][stream]
-            cc = np.load(f"{fldr}/channels.npy")
-            delta = np.load(f"{fldr}/channel_states.npy")
+            delta = np.load(self._eventstatesfile(stream, expt, rec, node))
+            cc = np.abs(delta)
             self._events[node][expt][rec][stream] = {}
             channels = np.unique(cc)
             for c in channels:
