@@ -77,7 +77,7 @@ def findnode(exptroot, expt, rec, stream, node=None):
     raise ValueError('No node found for given expt/rec/stream')
 
 
-def streaminfo(exptroot, expt=1, rec=1, section='continuous', stream=0, ttl='TTL_1', node=None):
+def streaminfo(exptroot, expt=1, rec=1, section='continuous', stream=0, ttl=None, node=None):
     """
     STREAMINFO - Return a dictionary containing the information session
     about the selected stream from the oebin file.
@@ -114,14 +114,13 @@ def streaminfo(exptroot, expt=1, rec=1, section='continuous', stream=0, ttl='TTL
     oebin = loadoebin(exptroot, expt, rec, node)
     if type(stream) != str:
         return oebin[section][stream]
-    if not stream.endswith('/'):
-        stream += '/'
-    if section=='events':
-        stream += ttl + '/'
+    stream = stream.split('/')[0]
     for n in range(len(oebin[section])):
-        if oebin[section][n]['folder_name'].lower() == stream.lower():
-            return oebin[section][n]
-    raise ValueError(f'Could not find {section} stream "{stream}"')
+        folder = oebin[section][n]['folder_name'].split('/')
+        if folder[0].lower()==stream.lower():
+            if section!='events' or ttl is None or folder[1].lower()==ttl.lower():
+                return oebin[section][n]
+    raise ValueError(f'Could not find {section} stream "{stream}" ttl {ttl}')
 
 
 def recordingpath(exptroot, expt, rec, stream, node):
@@ -297,7 +296,7 @@ def loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
     return ss, cc, st
 
 
-def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0, ttl: str='TTL_1', node: int=None):
+def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0, ttl: str=None, node: int=None):
     """
     LOADEVENTS - Load events associated with a continuous data stream.
 
@@ -315,7 +314,7 @@ def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0,
     stream : integer or string, default is 0
         The continuous data source we are getting the events for, either as an integer index or
         as a direct folder name.
-    ttl : string, default is 'TTL_1'
+    ttl : string, default is None, for automatic
         The TTL event stream that we are loading
 
     Returns
@@ -354,6 +353,7 @@ def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0,
         tsfn = f'{fldr}/events/{subfldr}/{fn}.npy'
         if os.path.exists(tsfn):
             ss_trl = np.load(tsfn)
+            break
     if os.path.exists(f'{fldr}/events/{subfldr}/states.npy'):
         # v0.6.x style
         bnc_states = np.load(f'{fldr}/events/{subfldr}/states.npy')
@@ -508,7 +508,7 @@ def _cntlbarcodes(sss, uds):
             onems = dss[0]/10
             thr = dss[0]*3//4
             if np.any(dss < 3*onems) or np.any(dss>12*onems):
-                print(f'Likely faulty bar code of length {len(ss)} at {ss[0]}')
+                print(f'Group of events of length {len(ss)} at {ss[0]} could be faulty bar code')
             else:
                 for ds in dss[1:]:
                     code *= 2
@@ -517,7 +517,7 @@ def _cntlbarcodes(sss, uds):
                 codes.append(code)
                 times.append(s0)
         elif len(ss)>5:
-            print(f'Likely faulty bar code of length {len(ss)} at {ss[0]}')
+            print(f'Group of events of length {len(ss)} at {ss[0]} could be faulty bar code')
 
     return times, codes
 
@@ -660,7 +660,7 @@ def aligntimestamps(ss_event_nidaq, ss_ni, ss_np):
 def loadtranslatedevents(exptroot, expt=1, rec=1,
                          sourcestream='NI-DAQmx-142.0',
                          targetstream='Neuropix-PXI-126.0',
-                         targetttl='TTL_1',
+                         targetttl=None,
                          sourcenode=None,
                          targetnode=None,
                          newstylebarcodes=None,
@@ -719,9 +719,9 @@ class EventTranslator:
     to another stream (either another probe or the NIDAQ.'''
     def __init__(self, exptroot, expt=1, rec=1,
                          sourcestream='NI-DAQmx-142.0',
-                         sourcettl='TTL_1',
+                         sourcettl=None,
                          targetstream='Neuropix-PXI-126.0',
-                         targetttl='TTL_1',
+                         targetttl=None,
                          sourcenode=None,
                          targetnode=None,
                          sourcebarcodechannel=1):
@@ -906,6 +906,8 @@ class Loader:
         self._ss0 = {} # node->expt->rec->stream
         self._barcodes = {} # node->expt->rec->stream->(times, ids)
         self.cntlbarcodes = cntlbarcodes
+        if not os.path.exists(root):
+            raise ValueError(f"No data at {root}")
 
     def _oebin(self, node, expt, rec):
         _populate(self._oebins, node, expt)
@@ -1040,12 +1042,15 @@ class Loader:
         fldr += f"/experiment{expt}/recording{rec}"
         return fldr
 
-    def _contfolder(self, stream, expt=1, rec=1, node=None):
+    def contfolder(self, stream, expt=1, rec=1, node=None):
+        '''CONTFOLDER - Folder name where continuous data is stored
+        p = CONTFOLDER(stream) returns the full path of the "continuous" folder for the given stream.
+        Optional expt, rec, and node further specify.'''
         node = self._autonode(stream, node)
         return self._recfolder(node, expt, rec) + f"/continuous/{stream}"
 
     def _contsamplestampfile(self, stream, expt=1, rec=1, node=None):
-        fldr = self._contfolder(stream, expt, rec, node)
+        fldr = self.contfolder(stream, expt, rec, node)
         for fn in ["sample_numbers", "timestamps"]:
             if os.path.exists(f"{fldr}/{fn}.npy"):
                 return f"{fldr}/{fn}.npy"
@@ -1131,13 +1136,22 @@ class Loader:
         By default, the file "continuous.dat" is loaded. Use optional
         argument STAGE to specify an alternative. (E.g., stage='salpa'
         for "salpa.dat".)'''
-        contfn = self._contfolder(stream, expt, rec, node)
+        contfn = self.contfolder(stream, expt, rec, node)
         contfn += f"/{stage}.dat"
         mm = np.memmap(contfn, dtype=np.int16, mode='r')
         info = self._oebinsection(expt, rec, stream=stream, node=node)
         C = info['num_channels']
         T = len(mm) // C
         return np.reshape(mm, [T, C])
+
+    def bitvolts(self, stream, expt=1, rec=1, node=None):
+        '''BITVOLTS - Scale factor for all the channels for a data stream
+        BITVOLTS(stream) returns the scale factors to convert DATA from
+        binary scale to volts as a C-length array. Optional arguments EXPT, REC, and
+        NODE further specify.'''
+        info = self._oebinsection(expt, rec, stream=stream, node=node)
+        return [ ch['bit_volts'] for ch in info['channels'] ]
+
 
     def channellist(self, stream, expt=1, rec=1, node=None):
         '''CHANNELLIST - List of channels for a stream
@@ -1299,7 +1313,7 @@ class Loader:
         N = len(data)
         t1 = t0 + N
         # Figure out edges of interval in destination time zone
-        t01d = self.shifttime([t0, t1], sourcestream, deststream, expt, rec,
+        t01d = self.shifttime(np.array([t0, t1]), sourcestream, deststream, expt, rec,
                                sourcenode, destnode, sourcebarcode, destbarcode)
         t0d = t01d[0]
         t1d = t01d[1]
