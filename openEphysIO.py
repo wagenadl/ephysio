@@ -431,7 +431,11 @@ def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None):
         dt = np.diff(ss_trl)
         drop = np.nonzero(dt < dropshort_ms*f_Hz/1000)[0] + 1
         ss_trl = np.delete(ss_trl, drop)
-    idx = np.nonzero(np.diff(ss_trl) >= t_split_s * f_Hz)[0] + 1
+    ds = np.diff(ss_trl)
+    thresh =  int(t_split_s * f_Hz)
+    ds[np.isnan(ss_trl[1:])] = thresh + 1
+    ds[np.isnan(ss_trl[:-1])] = thresh + 1
+    idx = np.nonzero(ds >= thresh)[0] + 1
     N = len(ss_trl)
     idx = np.hstack((0, idx, N))
     ss_block = []
@@ -439,9 +443,15 @@ def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None):
         ss_block.append(ss_trl[idx[k]:idx[k + 1]])
     if extra is None:
         return ss_block
-    ex_block = []
-    for k in range(len(idx) - 1):
-        ex_block.append(extra[idx[k]:idx[k + 1]])
+    def blockedextra(extra):
+        ex_block = []
+        for k in range(len(idx) - 1):
+            ex_block.append(extra[idx[k]:idx[k + 1]])
+        return ex_block
+    if type(extra)==tuple:
+        ex_block = tuple([blockedextra(x) for x in extra])
+    else:
+        ex_block = blockedextra(extra)
     return ss_block, ex_block
 
 
@@ -552,7 +562,15 @@ def _openephysbarcodes(sss, uds, f_Hz):
     BITDURATION_MS = (INTER_BARCODE_INTERVAL_S - 1) * 32 / BARCODE_BITS
     # See https://github.com/open-ephys/sync-barcodes/blob/main/arduino-barcodes/arduino-barcodes.ino line 37.
     PERIOD = BITDURATION_MS * f_Hz / 1000
+
     N = len(sss_on)
+    if N>10:
+        # Hack for early version of Frank Lanfranchi's barcode generator
+        ss1 = [ ss[0] for ss in sss_on ]
+        ds1 = np.diff(ss1)
+        if np.median(ds1) < f_Hz * 10.0:
+            PERIOD = 120
+
     for n in range(N): # Loop over all the codes
         dton = sss_off[n][1:] - sss_on[n][1:] # Skip first pulse
         dtoff = sss_on[n][1:] - sss_off[n][:-1]
@@ -712,6 +730,27 @@ def loadtranslatedevents(exptroot, expt=1, rec=1,
     bnc_states = bnc_states[idx]
     fw = fw[idx]
     return ss_trl.astype(int), bnc_cc, bnc_states, fw
+
+
+def dropglitches(ss, ds0):
+    '''DROPGLITCHES - Drop glitches from event streams
+    ss = DROPGLITCHES(ss, ds0), where SS is an Nx2 array of on and off times of events,
+    hunts for glitches (events or interevent times shorter than DS0) and removes them.
+    The result is an N'x2 array, where N' is less than N by the number of removed glitches.'''
+    ss = ss.flatten()
+    glitch = np.nonzero(np.diff(ss)<ds0)[0]
+    # 0 5   20 25    26 27   50 55    => 0 5    20 25    50 55
+    #                 *  *
+    
+    # 0 5   20 25    36 37   50 55    => 0 5    20 25    50 55
+    #                    *
+
+    # 0 5   20 25    26 37   50 55    => 0 5    20 37    50 55
+    #                 *
+    while len(glitch):
+        ss = np.delete(ss, [glitch[0], glitch[0] + 1])
+        glitch = np.nonzero(np.diff(ss)<ds0)[0]
+    return np.reshape(ss, [len(ss)//2, 2])
 
 
 class EventTranslator:
@@ -1268,33 +1307,24 @@ class Loader:
         ss1_matched, ss2_matched = matchbarcodes(ss1, bb1, ss2, bb2)
         if len(ss1_matched) < 2 + .2*(len(ss1) + len(ss2))/2:
             raise Exception("Not enough matched bar codes")
-        
-        # Interpolation: Times after the first barcode and before the last:
-        times_within = times[(times > ss1[0]) & (times < ss1[-1])]
-        
-        # Extrapolation:  Times before the first barcode and after the last
-        times_before = times[times < ss1[0]]
-        times_after = times[times > ss1[-1]]
-        
-        # Interpolate
-        t_within = np.interp(times_within, ss1_matched, ss2_matched)
-        
-        # Extrapolate
-        if len(times_before):
-            print(f"Caution: Extrapolation {times_before} event(s) before start of bar codes")
-            a_before, b_before = np.polyfit(ss1[:2], ss2[:2], 1)
-            t_before = a_before * times_before + b_before
-        else:
-            t_before = []
 
-        if len(times_after):
-            print(f"Caution: Extrapolation {times_after} event(s) after end of bar codes")
+        # Interpolate
+        result = np.interp(times, ss1_matched, ss2_matched)
+
+        # Extrapolate times before the first barcode and after the last
+        isbefore = np.nonzero(times < ss1[0])[0]
+        if len(isbefore):
+            print(f"Caution: Extrapolation {len(isbefore)} event(s) before start of bar codes")
+            a_before, b_before = np.polyfit(ss1[:2], ss2[:2], 1)
+            result[isbefore] = a_before * result[isbefore] + b_before
+
+        isafter = np.nonzero(times > ss1[-1])[0]
+        if len(isafter):
+            print(f"Caution: Extrapolation {len(isafter)} event(s) after end of bar codes")
             a_after, b_after = np.polyfit(ss1[-2:], ss2[-2:], 1)
-            t_after = a_after * times_after +  b_after
-        else:
-            t_after = []
+            result[isafter] = a_after * result[isafter] + b_after
         
-        return np.concatenate([t_before, t_within, t_after])
+        return result
 
     
     def translatedata(self, data, t0, sourcestream, deststream, expt=1, rec=1,
@@ -1328,21 +1358,27 @@ class Loader:
 
     
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
-                    nidaqstream=None, nidaqbarcode=1, destbarcode=1):
+                    nidaqstream=None, nidaqbarcode=1, destbarcode=1,
+                    glitch_ms=None):
         '''NIDAQEVENTS - NIDAQ events translated to given stream
         NIDAQEVENTS is a convenience function that first calls EVENTS
         on the NIDAQ stream, then SHIFTTIME to convert those events
         to the time base of the given STREAM.
         NIDAQBARCODE and DESTBARCODE are the digital (or analog)
-        channel that contain bar codes.'''
+        channel that contain bar codes.
+        Optional argument GLITCH_MS specifies that glitches shorter than
+        the given duration should be removed.'''
         if nidaqstream is None:
             nidaqstream = self.nidaqstream()
         events = self.events(nidaqstream, expt, rec)
+        fs = self.samplingrate(nidaqstream, expt, rec)
         if stream==nidaqstream:
             return events
         nevents = {}
         for ch, evts in events.items():
             if ch != nidaqbarcode:
+                if glitch_ms is not None:
+                    evts = dropglitches(evts, glitch_ms*fs/1000)
                 nevents[ch] = self.shifttime(evts, nidaqstream, stream,
                                              expt, rec,
                                              sourcebarcode=nidaqbarcode,
