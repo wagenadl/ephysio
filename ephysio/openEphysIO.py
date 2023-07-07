@@ -970,6 +970,10 @@ class Loader:
             raise ValueError(f"No data at {root}")
 
     def _oebin(self, node, expt, rec):
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         _populate(self._oebins, node, expt)
         if rec not in self._oebins[node][expt]:
             self._oebins[node][expt][rec] = loadoebin(self.root,
@@ -1095,41 +1099,67 @@ class Loader:
         older versions of OpenEphys that did not keep track.'''
         return list(self.nodemap().keys())
 
-    def _recfolder(self, node, expt=1, rec=1):
+    def _firstexpt(self, node):
         fldr = self.root
         if node is not None:
             fldr += f"/{node}"
-        fldr += f"/experiment{expt}/recording{rec}"
+        xpts = [x for x in os.listdir(fldr) if x.startswith("experiment")]
+        if not xpts:
+            raise Exception("No experiments")
+        xpts.sort()
+        return int(xpts[0][10:])
+
+    def _firstrec(self, node, expt):
+        fldr = self.root
+        if node is not None:
+            fldr += f"/{node}"
+        fldr += f"/experiment{expt}"
+        recs = [x for x in os.listdir(fldr) if x.startswith("recording")]
+        if not recs:
+            raise Exception("No recordings")
+        recs.sort()
+        return int(recs[0][9:])
+    
+    def _recfolder(self, node, expt=None, rec=None):
+        fldr = self.root
+        if node is not None:
+            fldr += f"/{node}"
+        if expt is None:
+            expt = self._firstexpt(node)
+        fldr += f"/experiment{expt}"
+        if rec is None:
+            rec = self._firstrec(node, expt)
+        fldr += f"/recording{rec}"
         return fldr
 
-    def contfolder(self, stream, expt=1, rec=1, node=None):
+    def contfolder(self, stream, expt=None, rec=None, node=None):
         '''CONTFOLDER - Folder name where continuous data is stored
         p = CONTFOLDER(stream) returns the full path of the "continuous" folder for the given stream.
         Optional expt, rec, and node further specify.'''
         node = self._autonode(stream, node)
         return self._recfolder(node, expt, rec) + f"/continuous/{stream}"
 
-    def _contsamplestampfile(self, stream, expt=1, rec=1, node=None):
+    def _contsamplestampfile(self, stream, expt=None, rec=None, node=None):
         fldr = self.contfolder(stream, expt, rec, node)
         for fn in ["sample_numbers", "timestamps"]:
             if os.path.exists(f"{fldr}/{fn}.npy"):
                 return f"{fldr}/{fn}.npy"
         raise Exception(f"No sample stamp file found for {stream} {expt}:{rec}")
 
-    def _eventfolder(self, stream, expt=1, rec=1, node=None):
+    def _eventfolder(self, stream, expt=None, rec=None, node=None):
         node = self._autonode(stream, node)
         fldr = self._recfolder(node, expt, rec) + f"/events/{stream}"
         ttl = _quickglob(f"{fldr}/TTL*")
         return f"{fldr}/{ttl[0]}"
 
-    def _eventsamplestampfile(self, stream, expt=1, rec=1, node=None):
+    def _eventsamplestampfile(self, stream, expt=None, rec=None, node=None):
         fldr = self._eventfolder(stream, expt, rec, node)
         for fn in ["sample_numbers", "timestamps"]:
             if os.path.exists(f"{fldr}/{fn}.npy"):
                 return f"{fldr}/{fn}.npy"
         raise Exception(f"No sample stamp file found for {stream} {expt}:{rec}")
 
-    def _eventstatesfile(self, stream, expt=1, rec=1, node=None):
+    def _eventstatesfile(self, stream, expt=None, rec=None, node=None):
         fldr = self._eventfolder(stream, expt, rec, node)
         for fn in ["states", "channel_states"]:
             if os.path.exists(f"{fldr}/{fn}.npy"):
@@ -1154,9 +1184,10 @@ class Loader:
                 nodemap[None] = explorenodes(None)
             else:
                 for node in nodes:
-                    probes = explorenodes(node)
-                    if len(probes):
-                        nodemap[node] = probes
+                    if os.path.exists(f"{self.root}/{node}/settings.xml"):
+                        probes = explorenodes(node)
+                        if len(probes):
+                            nodemap[node] = probes
             streammap = {}
             for node, streams in nodemap.items():
                 for stream in streams:
@@ -1175,7 +1206,7 @@ class Loader:
             self.nodemap()
         return self._streammap
 
-    def samplingrate(self, stream, expt=1, rec=1, node=None):
+    def samplingrate(self, stream, expt=None, rec=None, node=None):
         '''SAMPLINGRATE - Sampling rate of a stream
         SIMPLINGRATE(stream), where STREAM is one of the items returned
         by STREAMS() or its friends, returns the sampling rate of that
@@ -1183,13 +1214,17 @@ class Loader:
         "experiment" and "recording", but those can usually be left out,
         as the sampling rate is generally consistent for a whole session.'''
         node = self._autonode(stream, node)
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         _populate(self._sfreqs, node, expt, rec)
         if stream not in self._sfreqs[node][expt][rec]:
             info = self._oebinsection(expt, rec, stream=stream, node=node)
             self._sfreqs[node][expt][rec][stream] = info['sample_rate']
         return self._sfreqs[node][expt][rec][stream]
 
-    def data(self, stream, expt=1, rec=1, node=None, stage='continuous'):
+    def data(self, stream, expt=None, rec=None, node=None, stage='continuous'):
         '''DATA - Data for a stream
         DATA(stream) returns the data for the first recording from the
         given stream as a TxC array. Optional arguments EXPT, REC, and
@@ -1205,7 +1240,7 @@ class Loader:
         T = len(mm) // C
         return np.reshape(mm, [T, C])
 
-    def bitvolts(self, stream, expt=1, rec=1, node=None):
+    def bitvolts(self, stream, expt=None, rec=None, node=None):
         '''BITVOLTS - Scale factor for all the channels for a data stream
         BITVOLTS(stream) returns the scale factors to convert DATA from
         binary scale to volts as a C-length array. Optional arguments EXPT, REC, and
@@ -1213,7 +1248,7 @@ class Loader:
         info = self._oebinsection(expt, rec, stream=stream, node=node)
         return [ch['bit_volts'] for ch in info['channels']]
 
-    def channellist(self, stream, expt=1, rec=1, node=None):
+    def channellist(self, stream, expt=None, rec=None, node=None):
         '''CHANNELLIST - List of channels for a stream
         CHANNELLIST(stream) returns the list of channels for that stream.
         Each entry in the list is a dict with channel name and other
@@ -1222,7 +1257,7 @@ class Loader:
         info = self._oebinsection(expt, rec, stream=stream, node=node)
         return info['channels']
 
-    def events(self, stream, expt=1, rec=1, node=None):
+    def events(self, stream, expt=None, rec=None, node=None):
         '''EVENTS - Events for a stream
         EVENTS(stream) returns the events associated with the given
         stream as a dict of event channel numbers (typically counted 1
@@ -1266,12 +1301,17 @@ class Loader:
                 self._events[node][expt][rec][stream][c] = myss
         return self._events[node][expt][rec][stream]
 
-    def analogevents(self, stream, channel="A0", expt=1, rec=1, node=None):
+    def analogevents(self, stream, channel="A0", expt=None, rec=None, node=None):
         '''ANALOGEVENTS - Return virtual events from analog channel
         ss = ANALOGEVENTS(stream, channel) treats the given channel (specified
         in string form, e.g., "A0", or "A1", etc.) as if it were a digital
         channel and returns an Nx2 array of on/off event time stamps.
         '''
+        node = self._autonode(stream, node)
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         self.events(stream, expt, rec, node)  # just to populate the dict
         if channel not in self._events[node][expt][rec][stream]:
             ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
@@ -1279,7 +1319,7 @@ class Loader:
             self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N // 2, 2))
         return self._events[node][expt][rec][stream]
 
-    def barcodes(self, stream, expt=1, rec=1, node=None, channel=1):
+    def barcodes(self, stream, expt=None, rec=None, node=None, channel=1):
         '''BARCODES - Extract bar codes from a given stream
         times, codes = BARCODES(stream) returns the time stamps and codes of the
         bar codes associated with the given stream. Optional arguments EXPT, REC,
@@ -1288,6 +1328,10 @@ class Loader:
         bar codes are to be read. If CHANNEL is a string like "A0", the bar codes
         are read from the given analog channel.'''
         node = self._autonode(stream, node)
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         _populate(self._barcodes, node, expt, rec)
         if stream not in self._barcodes[node][expt][rec]:
             if type(channel) == str:
@@ -1309,7 +1353,7 @@ class Loader:
             self._barcodes[node][expt][rec][stream] = (tt, vv)
         return self._barcodes[node][expt][rec][stream]
 
-    def shifttime(self, times, sourcestream, deststream, expt=1, rec=1,
+    def shifttime(self, times, sourcestream, deststream, expt=None, rec=None,
                   sourcenode=None, destnode=None,
                   sourcebarcode=1, destbarcode=1):
         '''SHIFTTIME - Translate event time stamps to other stream
@@ -1350,7 +1394,8 @@ class Loader:
 
         return result
 
-    def translatedata(self, data, t0, sourcestream, deststream, expt=1, rec=1,
+    def translatedata(self, data, t0, sourcestream, deststream,
+                      expt=None, rec=None,
                       sourcenode=None, destnode=None,
                       sourcebarcode=1, destbarcode=1):
         '''TRANSLATEDATA - Translate a chunk of data from one timezone to another.
@@ -1379,7 +1424,7 @@ class Loader:
         datad = np.interp(tts, np.arange(t0, t1), data)
         return datad, t0d
 
-    def nidaqevents(self, stream, expt=1, rec=1, node=None,
+    def nidaqevents(self, stream, expt=None, rec=None, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1,
                     glitch_ms=None):
         '''NIDAQEVENTS - NIDAQ events translated to given stream
