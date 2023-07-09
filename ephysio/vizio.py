@@ -1,8 +1,18 @@
 #!/usr/bin/python3
 
-from PyQt5.QtWidgets import QApplication, QWidget, QInputDialog
-from PyQt5.QtGui import QPainter, QPen, QBrush, QColor, QPolygon
-from PyQt5.QtCore import Qt, QRect, QPoint
+try:
+    from PyQt5.QtWidgets import QApplication, QWidget, QInputDialog
+    from PyQt5.QtGui import QPainter, QPen, QBrush, QColor, QPolygon
+    from PyQt5.QtCore import Qt, QRect, QPoint
+except ModuleNotFoundError:
+    print('''
+============================================================
+To use vizio, you must first install PyQt5, e.g., by running
+
+    pip install PyQt5
+============================================================''')
+    raise
+
 import numpy as np
 
 
