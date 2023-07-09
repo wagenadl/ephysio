@@ -1028,6 +1028,17 @@ class Loader:
                         ss.append(s)
         return ss
 
+    def spikestream(self, n=0):
+        '''SPIKESTREAM - Name of a spike stream
+        SPIKESTREAM() returns the name of the first spike stream, if any. 
+        SPIKESTREAM(n) returns the name of the n-th spike stream (counting 
+        from 0).
+        Raises exception if the given stream does not exist.'''
+        ss = self.spikestreams()
+        if len(ss)<=n:
+            raise ValueError("Nonexistent spikestream")
+        return ss[n]
+
     def lfpstreams(self):
         '''LFPSTREAMS - List of all LFP streams
         LFPSTREAMS() returns a list of all LFP streams, i.e., those
@@ -1048,22 +1059,32 @@ class Loader:
                         ss.append(s)
         return ss
 
+    def lfpstream(self, n=0):
+        '''LFPSTREAM - Name of an LFP stream
+        LFPSTREAM() returns the name of the first LFP stream, if any. 
+        LFPSTREAM(n) returns the name of the n-th LFP stream (counting 
+        from 0).
+        Raises exception if the given stream does not exist.'''
+        ss = self.lfpstreams()
+        if len(ss)<=n:
+            raise ValueError("Nonexistent LFP stream")
+        return ss[n]
+
     def nidaqstreams(self):
         '''NIDAQSTREAMS - List of all NIDAQ streams
         NIDAQSTREAMS() returns a list of all NIDAQ streams.'''
         return [s for s in self.streams() if s.startswith("NI-DAQ")]
 
-    def nidaqstream(self):
-        '''NIDAQSTREAM - Name of only NIDAQ stream
-        NIDAQSTREAM() returns the name of the NIDAQ stream if there is
-        precisely one. Otherwise, raises an exception.'''
+    def nidaqstream(self, n=0):
+        '''NIDAQSTREAM - Name of NIDAQ stream
+        NIDAQSTREAM() returns the name of the first NIDAQ stream.
+        NIDAQSTREAM(n) returns the name of the n-th LFP stream (counting
+        from 0). 
+        Raises exception if the given stream does not exist.'''
         nidaqs = self.nidaqstreams()
-        if len(nidaqs) == 1:
-            return nidaqs[0]
-        elif len(nidaqs) == 0:
-            raise ValueError("No NIDAQ streams")
-        else:
-            raise ValueError("Multiple NIDAQ streams")
+        if len(nidaqs) <= n:
+            raise ValueError("Nonexistent NIDAQ stream")
+        return nidaqs[n]
 
     def experiments(self):
         '''EXPERIMENTS - List of "experiments"
