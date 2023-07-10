@@ -1018,7 +1018,7 @@ class Loader:
             fsbystream = {}
             for s in streams:
                 if s not in nidaqs:
-                    fs = self.samplingrate(s, node=node, expt=None, rec=None)
+                    fs = self.samplingrate(s, node=node)
                     fsbystream[s] = fs
                     fsmax = max(fsmax, fs)
             for s in streams:
@@ -1226,7 +1226,7 @@ class Loader:
             self.nodemap()
         return self._streammap
 
-    def samplingrate(self, stream, expt=1, rec=1, node=None):
+    def samplingrate(self, stream, expt=None, rec=None, node=None):
         '''SAMPLINGRATE - Sampling rate of a stream
         SIMPLINGRATE(stream), where STREAM is one of the items returned
         by STREAMS() or its friends, returns the sampling rate of that

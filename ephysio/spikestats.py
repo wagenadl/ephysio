@@ -45,14 +45,14 @@ class SpikeStats:
 
     def latencies(self, celid, dt_start_ms=-50, dt_end_ms=150):
         '''LATENCIES - Extract peristimulus latencies for all spikes for a given neuron
-        lat, tri = LATENCIES(stim_s, spks, celid, dt_start_ms, dt_end_ms) extracts latencies (in ms)
-        and trial numbers for all of the spikes associated with the given CELID in the SPKS dataframe,
-        which must have columns (celid, time_s, lat_ms, tri), as per importSpikeData.
-        Unlike in the dataframe (where all latencies are nonnegative), we return latencies in the
-        interval from DT_start_ms to DT_end_ms. It is legit (and common) for DT_start_ms to be negative.
+        lat, tri = LATENCIES(celid, dt_start_ms, dt_end_ms) extracts latencies (in ms)
+        and trial numbers for all of the spikes associated with the given CELID.
+        We return latencies in the interval from DT_start_ms to DT_end_ms. It is legit (and common)
+        for DT_start_ms to be negative.
         Note that undefined behavior results if the interval (DT_start_ms, DT_end_ms) is longer than
         the shortest interval between stimuli. In particular, we are not smart enough to return a
-        spike twice in that case, once for each stimulus for which the interval encompasses the spike.'''
+        spike twice in that case, once for each stimulus for which the interval encompasses the spike.
+        '''
 
         t_spk_s = self.spks_s[celid]
         tri = np.searchsorted(self.stim_s + dt_start_ms / 1e3,
@@ -64,7 +64,7 @@ class SpikeStats:
 
     def spikecounts(self, celid, dt_start_ms=-50, dt_end_ms=150):
         '''SPIKECOUNTS - Count spikes in each trial
-        nnn = SPIKECOUNTS(stim_s, spks, celid, dt_start_ms=-50, dt_end_ms=150) counts the number
+        nnn = SPIKECOUNTS(celid, dt_start_ms=-50, dt_end_ms=150) counts the number
         of spikes in individual trials and returns a numpy array.
         Arguments are as for LATENCIES, but caveat about overlapping trials does not apply.'''
 
@@ -77,7 +77,7 @@ class SpikeStats:
 
     def psth(self, celid, dt_start_ms=-50, dt_end_ms=150, binsize_ms=5, pertrial=False):
         '''PSTH - Count spikes in each trial
-        nnn, bin_ms = PSTH(stim_s, spks, celid, dt_start_ms=-50, dt_end_ms=150, binsize_ms) counts up
+        nnn, bin_ms = PSTH(celid, dt_start_ms=-50, dt_end_ms=150, binsize_ms) counts up
         the number of spikes in latency bins across all trials.
         BIN_MS returns the *centers* of the latency bins.
         To get results for individual trials (as a LATENCYxTRIAL array), set PERTRIAL=True.
@@ -100,8 +100,9 @@ class SpikeStats:
 
     def trialcounts(self):
         '''TRIALCOUNTS - Count trials by type
-        nnn = TRIALCOUNTS() returns a tensor of occurrences of each trial type, or None if no trial types
-        were passed into the constructor.'''
+        nnn = TRIALCOUNTS() returns a tensor of occurrences of each trial type, or None if no trial
+        types were passed into the constructor.
+        '''
         if self.stim_idx is None:
             raise Exception("Calculating trial counts by type requires knowing a trial type (idx)")
         nnn = np.zeros(self.idx_shape, np.int)
