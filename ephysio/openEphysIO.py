@@ -1144,6 +1144,10 @@ class Loader:
         fldr = self.root
         if node is not None:
             fldr += f"/{node}"
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         fldr += f"/experiment{expt}"
         fldr += f"/recording{rec}"
         return fldr
@@ -1188,7 +1192,7 @@ class Loader:
         contained in each node.'''
 
         def explorenodes(node):
-            pattern = self._recfolder(node) + "/continuous/*/timestamps.npy"
+            pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
             streams = _quickglob(pattern)
             return streams
 
