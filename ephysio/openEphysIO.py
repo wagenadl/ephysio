@@ -1018,7 +1018,7 @@ class Loader:
             fsbystream = {}
             for s in streams:
                 if s not in nidaqs:
-                    fs = self.samplingrate(s, node=node)
+                    fs = self.samplingrate(s, node=node, expt=None, rec=None)
                     fsbystream[s] = fs
                     fsmax = max(fsmax, fs)
             for s in streams:
@@ -1234,6 +1234,10 @@ class Loader:
         "experiment" and "recording", but those can usually be left out,
         as the sampling rate is generally consistent for a whole session.'''
         node = self._autonode(stream, node)
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         _populate(self._sfreqs, node, expt, rec)
         if stream not in self._sfreqs[node][expt][rec]:
             info = self._oebinsection(expt, rec, stream=stream, node=node)
