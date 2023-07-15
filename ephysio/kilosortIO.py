@@ -146,7 +146,8 @@ class Reader:
     def allspikes(self):
         '''ALLSPIKES - Times and cluster numbers for all spikes
         tms, cls = ALLSPIKES() returns time stamps in samples and cluster 
-        numbers (counted from 0) as two numpy vectors.'''
+        numbers (counted from 0) as two numpy vectors.
+        Caution: Results are not necessarily in cluster or time order.'''
         return self.spk_tms, self.spk_cls
 
     def nclusters(self):
@@ -160,8 +161,8 @@ class Reader:
     def spikesforcluster(self, k):
         '''SPIKESFORCLUSTER - Times of spikes for given cluster
         tms = SPIKESFORCLUSTER(k) returns the spike times (in samples) 
-        for cluster k.'''
-        return self.spk_tms[self.spk_cls==k]
+        for cluster k, sorted by time.'''
+        return np.sort(self.spk_tms[self.spk_cls==k])
 
     def spikesbycluster(self, label=None):
         '''SPIKESBYCLUSTER - Map of spike times for all clusters
