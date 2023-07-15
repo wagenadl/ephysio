@@ -524,7 +524,7 @@ def _cntlbarcodes(sss, uds):
             code = 0
             onems = dss[0] / 10
             thr = dss[0] * 3 // 4
-            if np.any(dss < 3 * onems) or np.any(dss > 12 * onems):
+            if np.any(dss < 3 * onems) or np.any(dss > 14 * onems):
                 noth += 1
             else:
                 nbar += 1
