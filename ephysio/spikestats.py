@@ -30,10 +30,10 @@ class SpikeStats:
             ndims = 0
             for idx in stim_idx:
                 if idx is not None:
-                    if type(idx)==list or type(idx)==tuple:
+                    if type(idx)==list or type(idx)==tuple or type(idx)==np.ndarray:
                         ndims = len(idx)
                         break
-            shape = np.zeros(ndims, np.int)
+            shape = np.zeros(ndims, int)
             for idx in stim_idx:
                 if idx is not None:
                     for dim in range(ndims):
@@ -105,10 +105,10 @@ class SpikeStats:
         '''
         if self.stim_idx is None:
             raise Exception("Calculating trial counts by type requires knowing a trial type (idx)")
-        nnn = np.zeros(self.idx_shape, np.int)
+        nnn = np.zeros(self.idx_shape, int)
         for idx in self.stim_idx:
             if idx is not None:
-                nnn[idx] += 1
+                nnn[tuple(idx)] += 1
         return nnn
 
     def totalspikecountsbytrialtype(self, celid, dt_start_ms=-50, dt_end_ms=150):
@@ -118,8 +118,8 @@ class SpikeStats:
         if self.stim_idx is None:
             raise Exception("Calculating spike counts by trial type requires knowing a trial type (idx)")
         nn = self.spikecounts(celid, dt_start_ms, dt_end_ms)
-        nnn = np.zeros(self.idx_shape, np.int)
+        nnn = np.zeros(self.idx_shape, int)
         for n, idx in zip(nn, self.stim_idx):
             if idx is not None:
-                nnn[idx] += n
+                nnn[tuple(idx)] += n
         return nnn
