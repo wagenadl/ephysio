@@ -66,15 +66,15 @@ class Reader:
         self.cnt = None
 
         self.elc4clust = {}
-        with open(f'{folder}/cluster_info.tsv') as f:
-            rdr = csv.reader(f, delimiter='\t')
-            rows = [x for x in rdr]
-            hdr = rows[0]
-            idx = hdr.index('ch') # despite the header, DAW believe this is an electrode number, not a ks channel
-            for row in rows[1:]:
-                self.elc4clust[int(row[0])] = int(row[idx])
-
-        #self.phylog = PhyLogReader(folder)
+        if os.path.exists(f'{folder}/cluster_info.tsv'):
+            with open(f'{folder}/cluster_info.tsv') as f:
+                rdr = csv.reader(f, delimiter='\t')
+                rows = [x for x in rdr]
+                hdr = rows[0]
+                idx = hdr.index('ch') # despite the header, DAW believes this
+                                      # is an electrode number, not a ks channel
+                for row in rows[1:]:
+                    self.elc4clust[int(row[0])] = int(row[idx])
 
     def spikecount_unit(self, u=None):
         '''SPIKECOUNT_UNIT - Return number of spikes per unit

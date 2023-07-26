@@ -4,7 +4,7 @@ import numpy as np
 import ast
 import os
 import glob
-
+#import daw.ppersist
 
 def _nodetostr(node):
     if type(node) == str:
@@ -57,7 +57,7 @@ def findnode(exptroot, expt, rec, stream, node=None):
         else:
             raise ValueError(f'Stream {stream} not found')
         return node, stream
-    
+
     if os.path.exists(f'{exptroot}/experiment{expt}'):
         streampaths = glob.glob(f'{exptroot}/experiment{expt}/recording{rec}/continuous/{stream}')
         if len(streampaths) == 1:
@@ -117,8 +117,8 @@ def streaminfo(exptroot, expt=1, rec=1, section='continuous', stream=0, ttl=None
     stream = stream.split('/')[0]
     for n in range(len(oebin[section])):
         folder = oebin[section][n]['folder_name'].split('/')
-        if folder[0].lower()==stream.lower():
-            if section!='events' or ttl is None or folder[1].lower()==ttl.lower():
+        if folder[0].lower() == stream.lower():
+            if section != 'events' or ttl is None or folder[1].lower() == ttl.lower():
                 return oebin[section][n]
     raise ValueError(f'Could not find {section} stream "{stream}" ttl {ttl}')
 
@@ -132,7 +132,7 @@ def recordingpath(exptroot, expt, rec, stream, node):
 def contfilename(exptroot, expt=1, rec=1, stream=0, infix='continuous', node=None):
     """
     CONTFILENAME - Return the filename of the continuous data for a given recording.
-    
+
     Parameters
     ----------
     exptroot : string
@@ -179,12 +179,14 @@ def contfilename(exptroot, expt=1, rec=1, stream=0, infix='continuous', node=Non
         raise Exception("No time stamps")
     return ifn, tsfn, continfo
 
+
 def _continuousmetadata(tsfn, continfo):
     tms = np.load(tsfn, mmap_mode='r')
     s0 = tms[0]
     chlist = continfo['channels']
     f_Hz = continfo['sample_rate']
     return s0, f_Hz, chlist
+
 
 def _doloadcontinuous(contfn, tsfn, continfo):
     """
@@ -261,42 +263,43 @@ def loadcontinuous(exptroot, expt=1, rec=1, stream=0, infix='continuous', contfn
 
 
 def _lameschmitt(dat, thr1, thr0):
-    high = dat>=thr1
+    high = dat >= thr1
     high[0] = False
-    low = dat<=thr0
+    low = dat <= thr0
     iup = []
     idn = []
     idx = 0
     siz = len(dat)
-    while idx<siz:
+    while idx < siz:
         didx = np.argmax(high[idx:])
-        if didx==0:
+        if didx == 0:
             break
         idx += didx
         iup.append(idx)
         didx = np.argmax(low[idx:])
-        if didx==0:
+        if didx == 0:
             break
         idx += didx
         idn.append(idx)
-    if len(iup)>len(idn):
+    if len(iup) > len(idn):
         iup = iup[:-1]
     return np.array(iup), np.array(idn)
 
 
 def loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
     dat, _, _, _ = loadcontinuous(exptroot, expt, rec, stream, node=node)
-    dat = dat[:,channel]
+    dat = dat[:, channel]
     thr = (np.min(dat) + np.max(dat)) / 2
-    iup, idn = _lameschmitt(dat, 1.1*thr, .9*thr)
-    
+    iup, idn = _lameschmitt(dat, 1.1 * thr, .9 * thr)
+
     ss = np.stack((iup, idn), 1).flatten()
     cc = channel + np.zeros(ss.shape, dtype=int)
-    st = np.stack((1 + 0*iup, -1 + 0*idn), 1).flatten()
+    st = np.stack((1 + 0 * iup, -1 + 0 * idn), 1).flatten()
     return ss, cc, st
 
 
-def loadevents(exptroot: str, s0: int=0, expt: int=1, rec: int=1, stream: int=0, ttl: str=None, node: int=None):
+def loadevents(exptroot: str, s0: int = 0, expt: int = 1, rec: int = 1, stream: int = 0, ttl: str = None,
+               node: int = None):
     """
     LOADEVENTS - Load events associated with a continuous data stream.
 
@@ -429,10 +432,11 @@ def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None):
 
     if dropshort_ms is not None:
         dt = np.diff(ss_trl)
-        drop = np.nonzero(dt < dropshort_ms*f_Hz/1000)[0] + 1
+        drop = np.nonzero(dt < dropshort_ms * f_Hz / 1000)[0] + 1
+        print("drop short", drop, ss_trl.shape, dropshort_ms, f_Hz)
         ss_trl = np.delete(ss_trl, drop)
     ds = np.diff(ss_trl)
-    thresh =  int(t_split_s * f_Hz)
+    thresh = int(t_split_s * f_Hz)
     ds[np.isnan(ss_trl[1:])] = thresh + 1
     ds[np.isnan(ss_trl[:-1])] = thresh + 1
     idx = np.nonzero(ds >= thresh)[0] + 1
@@ -443,12 +447,14 @@ def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None):
         ss_block.append(ss_trl[idx[k]:idx[k + 1]])
     if extra is None:
         return ss_block
+
     def blockedextra(extra):
         ex_block = []
         for k in range(len(idx) - 1):
             ex_block.append(extra[idx[k]:idx[k + 1]])
         return ex_block
-    if type(extra)==tuple:
+
+    if type(extra) == tuple:
         ex_block = tuple([blockedextra(x) for x in extra])
     else:
         ex_block = blockedextra(extra)
@@ -497,7 +503,7 @@ def _probablycntlbarcodes(sss, uds, f_Hz):
     isnew = []
     for ss, ud in zip(sss, uds):
         if len(ss) > 4 and ud[0]:
-            if len(ss)==18 and ss[1]-ss[0] < 450*f_Hz/30e3:
+            if len(ss) == 18 and ss[1] - ss[0] < 450 * f_Hz / 30e3:
                 isnew.append(1)
             else:
                 isnew.append(0)
@@ -508,26 +514,29 @@ def _cntlbarcodes(sss, uds):
     # This decodes bar codes from arduino code "stimbarcoduino"
     codes = []
     times = []
-
+    nbar = 0
+    noth = 0
     for ss, ud in zip(sss, uds):
-        if len(ss)==18 and ud[0]==1 and not np.any(np.diff(ud)==0):
+        if len(ss) == 18 and ud[0] == 1 and not np.any(np.diff(ud) == 0):
             # Potential barcode
             s0 = ss[0]
             dss = np.diff(ss)
             code = 0
-            onems = dss[0]/10
-            thr = dss[0]*3//4
-            if np.any(dss < 3*onems) or np.any(dss>12*onems):
-                print(f'Group of events of length {len(ss)} at {ss[0]} could be faulty bar code')
+            onems = dss[0] / 10
+            thr = dss[0] * 3 // 4
+            if np.any(dss < 3 * onems) or np.any(dss > 14 * onems):
+                noth += 1
             else:
+                nbar += 1
                 for ds in dss[1:]:
                     code *= 2
                     if ds > thr:
                         code += 1
                 codes.append(code)
                 times.append(s0)
-        elif len(ss)>5:
-            print(f'Group of events of length {len(ss)} at {ss[0]} could be faulty bar code')
+        elif len(ss) > 5:
+            noth += 1
+    print(f"(Found {nbar} legit bar codes and {noth} other groups)")
 
     return times, codes
 
@@ -564,17 +573,17 @@ def _openephysbarcodes(sss, uds, f_Hz):
     PERIOD = BITDURATION_MS * f_Hz / 1000
 
     N = len(sss_on)
-    if N>10:
+    if N > 10:
         # Hack for early version of Frank Lanfranchi's barcode generator
-        ss1 = [ ss[0] for ss in sss_on ]
+        ss1 = [ss[0] for ss in sss_on]
         ds1 = np.diff(ss1)
         if np.median(ds1) < f_Hz * 10.0:
             PERIOD = 120
 
-    for n in range(N): # Loop over all the codes
-        dton = sss_off[n][1:] - sss_on[n][1:] # Skip first pulse
+    for n in range(N):  # Loop over all the codes
+        dton = sss_off[n][1:] - sss_on[n][1:]  # Skip first pulse
         dtoff = sss_on[n][1:] - sss_off[n][:-1]
-        dtoff[0] -= PREDURATION_MS * f_Hz/1000 # First interval start marker
+        dtoff[0] -= PREDURATION_MS * f_Hz / 1000  # First interval start marker
         dton = np.round(dton / PERIOD).astype(int)
         dtoff = np.round(dtoff / PERIOD).astype(int)
         value = 0
@@ -615,7 +624,7 @@ def getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=1, newstyle=None):
     times : time stamps of starts of bar codes, in same units as ss_trl
     codes : decoded bar codes (16-bit integers)
     '''
-    
+
     ss, ud = filterevents(ss_trl, bnc_cc, bnc_states, channel=channel, updown=0)
     sss, uds = inferblocks(ss, t_split_s=.08, f_Hz=f_Hz, extra=ud)
     if newstyle is None:
@@ -684,9 +693,9 @@ def loadtranslatedevents(exptroot, expt=1, rec=1,
                          newstylebarcodes=None,
                          sourcebarcodechannel=1):
     '''
-    LOADTRANSLATEDEVENTS - As LOADEVENTS, but ss_trl is translated to 
+    LOADTRANSLATEDEVENTS - As LOADEVENTS, but ss_trl is translated to
     samples in the target stream.
-    
+
     Parameters
     ----------
     exptroot, expt, rec : as for loadevents
@@ -703,11 +712,11 @@ def loadtranslatedevents(exptroot, expt=1, rec=1,
     targetttl: the TTL group number for the target stream
 
     '''
-    
+
     _, fs_Hz_src, _ = continuousmetadata(exptroot, expt, rec, stream=sourcestream)
 
-    if type(sourcebarcodechannel)==str and sourcebarcodechannel.startswith("A"):
-        sourcebarcodechannel=int(sourcebarcodechannel[1:])
+    if type(sourcebarcodechannel) == str and sourcebarcodechannel.startswith("A"):
+        sourcebarcodechannel = int(sourcebarcodechannel[1:])
         ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
                                                       node=sourcenode, channel=sourcebarcodechannel)
         fw = bnc_states
@@ -738,10 +747,10 @@ def dropglitches(ss, ds0):
     hunts for glitches (events or interevent times shorter than DS0) and removes them.
     The result is an N'x2 array, where N' is less than N by the number of removed glitches.'''
     ss = ss.flatten()
-    glitch = np.nonzero(np.diff(ss)<ds0)[0]
+    glitch = np.nonzero(np.diff(ss) < ds0)[0]
     # 0 5   20 25    26 27   50 55    => 0 5    20 25    50 55
     #                 *  *
-    
+
     # 0 5   20 25    36 37   50 55    => 0 5    20 25    50 55
     #                    *
 
@@ -749,31 +758,32 @@ def dropglitches(ss, ds0):
     #                 *
     while len(glitch):
         ss = np.delete(ss, [glitch[0], glitch[0] + 1])
-        glitch = np.nonzero(np.diff(ss)<ds0)[0]
-    return np.reshape(ss, [len(ss)//2, 2])
+        glitch = np.nonzero(np.diff(ss) < ds0)[0]
+    return np.reshape(ss, [len(ss) // 2, 2])
 
 
 class EventTranslator:
     '''EventTranslator transforms timestamps from one stream (e.g., a probe)
     to another stream (either another probe or the NIDAQ.'''
+
     def __init__(self, exptroot, expt=1, rec=1,
-                         sourcestream='NI-DAQmx-142.0',
-                         sourcettl=None,
-                         targetstream='Neuropix-PXI-126.0',
-                         targetttl=None,
-                         sourcenode=None,
-                         targetnode=None,
-                         sourcebarcodechannel=1):
+                 sourcestream='NI-DAQmx-142.0',
+                 sourcettl=None,
+                 targetstream='Neuropix-PXI-126.0',
+                 targetttl=None,
+                 sourcenode=None,
+                 targetnode=None,
+                 sourcebarcodechannel=1):
 
         (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=sourcestream, node=sourcenode)
-        if type(sourcebarcodechannel)==str and sourcebarcodechannel.startswith("A"):
-            sourcebarcodechannel=int(sourcebarcodechannel[1:])
+        if type(sourcebarcodechannel) == str and sourcebarcodechannel.startswith("A"):
+            sourcebarcodechannel = int(sourcebarcodechannel[1:])
             ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
                                                           node=sourcenode, channel=sourcebarcodechannel)
             fw = bnc_states
         else:
             ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=sourcestream,
-                                                          ttl=sourcettl, node=sourcenode)
+                                                        ttl=sourcettl, node=sourcenode)
         t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=sourcebarcodechannel)
 
         (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=targetstream, node=targetnode)
@@ -788,7 +798,7 @@ class EventTranslator:
         return np.interp(ss, self.ss_ni, self.ss_np)
 
 
-#%%
+# %%
 def read_broken_array(fp, allow_pickle=False, pickle_kwargs=None):
     """
     Read an array from an NPY file without reshaping.
@@ -829,7 +839,7 @@ def read_broken_array(fp, allow_pickle=False, pickle_kwargs=None):
         an object array.
 
     """
-    
+
     from numpy.lib.format import read_magic, _check_version, _read_array_header, isfileobj
     import numpy
 
@@ -882,8 +892,8 @@ def read_broken_array(fp, allow_pickle=False, pickle_kwargs=None):
                     read_count = min(max_read_count, count - i)
                     read_size = int(read_count * dtype.itemsize)
                     data = _read_bytes(fp, read_size, "array data")
-                    array[i:i+read_count] = numpy.frombuffer(data, dtype=dtype,
-                                                             count=read_count)
+                    array[i:i + read_count] = numpy.frombuffer(data, dtype=dtype,
+                                                               count=read_count)
 
     return array, shape, fortran_order
 
@@ -902,8 +912,8 @@ def _quickglob(pattern):
     for bit in bits:
         nb.append(bit[:1] + bit[1:].replace("//", "/"))
     pattern = ":".join(nb)
- 
-    if pattern[-1]=='/':
+
+    if pattern[-1] == '/':
         pattern = pattern[:-1]
     idx = None
     for k, bit in enumerate(pattern.split("/")):
@@ -915,11 +925,25 @@ def _quickglob(pattern):
     return [p.split("/")[idx] for p in paths]
 
 
-class Loader: 
+
+def _deglitch(ss, thresh):
+    ss = ss.flatten()
+    while True:
+        ds = np.diff(ss)
+        drop = np.nonzero(ds<thresh)[0]
+        if len(drop)>0:
+            ss = np.delete(ss, [drop[0], drop[0]+1])
+        else:
+            break
+    N = len(ss)
+    return ss.reshape(N//2, 2)
+
+
+class Loader:
     '''OpenEphys organizes a recording session into "experiments" which
     contain "recordings" which contain "streams" of continuous data
     with associated "events". In recent versions, the hierarchy on disk
-    also keeps track of the recording "node" that saved each stream. 
+    also keeps track of the recording "node" that saved each stream.
     This class allows easy access to all of this information.
     '''
 
@@ -935,15 +959,15 @@ class Loader:
 
         self.root = root
         self._expts = None
-        self._recs = {} # expt -> list of recs
+        self._recs = {}  # expt -> list of recs
         self._streams = None
-        self._nodemap = None # node -> list of streams
-        self._streammap = None # stream -> node
-        self._sfreqs = {} # node->expt->rec->stream->Hertz
-        self._oebins = {} # node->expt->rec
-        self._events = {} # node->expt->rec->stream->digitalchannel->Nx2
-        self._ss0 = {} # node->expt->rec->stream
-        self._barcodes = {} # node->expt->rec->stream->(times, ids)
+        self._nodemap = None  # node -> list of streams
+        self._streammap = None  # stream -> node
+        self._sfreqs = {}  # node->expt->rec->stream->Hertz
+        self._oebins = {}  # node->expt->rec
+        self._events = {}  # node->expt->rec->stream->digitalchannel->Nx2
+        self._ss0 = {}  # node->expt->rec->stream
+        self._barcodes = {}  # node->expt->rec->stream->(times, ids)
         self.cntlbarcodes = cntlbarcodes
         if not os.path.exists(root):
             raise ValueError(f"No data at {root}")
@@ -960,7 +984,7 @@ class Loader:
         oebin = self._oebin(node, expt, rec)[section]
         N = len(oebin)
         for n in range(N):
-            if oebin[n]['folder_name'].lower()==stream.lower() + "/":
+            if oebin[n]['folder_name'].lower() == stream.lower() + "/":
                 return oebin[n]
         raise ValueError(f"No oebin for {node} {expt} {rec} {stream} {section}")
 
@@ -969,7 +993,7 @@ class Loader:
             return self.streammap()[stream][0]
         else:
             return node
-    
+
     def streams(self):
         '''STREAMS - List of all streams
         STREAMS() returns a list of all stream names, spike, LFP, or
@@ -1002,7 +1026,18 @@ class Loader:
                     if fsbystream[s] == fsmax:
                         ss.append(s)
         return ss
-    
+
+    def spikestream(self, n=0):
+        '''SPIKESTREAM - Name of a spike stream
+        SPIKESTREAM() returns the name of the first spike stream, if any. 
+        SPIKESTREAM(n) returns the name of the n-th spike stream (counting 
+        from 0).
+        Raises exception if the given stream does not exist.'''
+        ss = self.spikestreams()
+        if len(ss)<=n:
+            raise ValueError("Nonexistent spikestream")
+        return ss[n]
+
     def lfpstreams(self):
         '''LFPSTREAMS - List of all LFP streams
         LFPSTREAMS() returns a list of all LFP streams, i.e., those
@@ -1023,23 +1058,33 @@ class Loader:
                         ss.append(s)
         return ss
 
+    def lfpstream(self, n=0):
+        '''LFPSTREAM - Name of an LFP stream
+        LFPSTREAM() returns the name of the first LFP stream, if any. 
+        LFPSTREAM(n) returns the name of the n-th LFP stream (counting 
+        from 0).
+        Raises exception if the given stream does not exist.'''
+        ss = self.lfpstreams()
+        if len(ss)<=n:
+            raise ValueError("Nonexistent LFP stream")
+        return ss[n]
+
     def nidaqstreams(self):
         '''NIDAQSTREAMS - List of all NIDAQ streams
         NIDAQSTREAMS() returns a list of all NIDAQ streams.'''
         return [s for s in self.streams() if s.startswith("NI-DAQ")]
-    
-    def nidaqstream(self):
-        '''NIDAQSTREAM - Name of only NIDAQ stream
-        NIDAQSTREAM() returns the name of the NIDAQ stream if there is
-        precisely one. Otherwise, raises an exception.'''
+
+    def nidaqstream(self, n=0):
+        '''NIDAQSTREAM - Name of NIDAQ stream
+        NIDAQSTREAM() returns the name of the first NIDAQ stream.
+        NIDAQSTREAM(n) returns the name of the n-th LFP stream (counting
+        from 0). 
+        Raises exception if the given stream does not exist.'''
         nidaqs = self.nidaqstreams()
-        if len(nidaqs)==1:
-            return nidaqs[0]
-        elif len(nidaqs)==0:
-            raise ValueError("No NIDAQ streams")
-        else:
-            raise ValueError("Multiple NIDAQ streams")
-    
+        if len(nidaqs) <= n:
+            raise ValueError("Nonexistent NIDAQ stream")
+        return nidaqs[n]
+
     def experiments(self):
         '''EXPERIMENTS - List of "experiments"
         EXPERIMENTS() returns a list of all experiments in the session.'''
@@ -1074,11 +1119,37 @@ class Loader:
         older versions of OpenEphys that did not keep track.'''
         return list(self.nodemap().keys())
 
+    def _firstexpt(self, node):
+        fldr = self.root
+        if node is not None:
+            fldr += f"/{node}"
+        xpts = [x for x in os.listdir(fldr) if x.startswith("experiment")]
+        if not xpts:
+            raise Exception("No experiments")
+        xpts.sort()
+        return int(xpts[0][10:])
+
+    def _firstrec(self, node, expt):
+        fldr = self.root
+        if node is not None:
+            fldr += f"/{node}"
+        fldr += f"/experiment{expt}"
+        recs = [x for x in os.listdir(fldr) if x.startswith("recording")]
+        if not recs:
+            raise Exception("No recordings")
+        recs.sort()
+        return int(recs[0][9:])
+    
     def _recfolder(self, node, expt=1, rec=1):
         fldr = self.root
         if node is not None:
             fldr += f"/{node}"
-        fldr += f"/experiment{expt}/recording{rec}"
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
+        fldr += f"/experiment{expt}"
+        fldr += f"/recording{rec}"
         return fldr
 
     def contfolder(self, stream, expt=1, rec=1, node=None):
@@ -1119,11 +1190,12 @@ class Loader:
         '''NODEMAP - Map of stream names per node
         NODEMAP() returns a dict mapping node names to lists of the streams
         contained in each node.'''
+
         def explorenodes(node):
-            pattern = self._recfolder(node) + "/continuous/*/timestamps.npy"
+            pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
             streams = _quickglob(pattern)
             return streams
-        
+
         if self._nodemap is None:
             nodes = _quickglob(f"{self.root}/*")
             nodemap = {}
@@ -1132,9 +1204,10 @@ class Loader:
                 nodemap[None] = explorenodes(None)
             else:
                 for node in nodes:
-                    probes = explorenodes(node)
-                    if len(probes):
-                        nodemap[node] = probes
+                    if os.path.exists(f"{self.root}/{node}/settings.xml"):
+                        probes = explorenodes(node)
+                        if len(probes):
+                            nodemap[node] = probes
             streammap = {}
             for node, streams in nodemap.items():
                 for stream in streams:
@@ -1147,13 +1220,13 @@ class Loader:
 
     def streammap(self):
         '''STREAMMAP - Map of stream names to recording nodes
-        STREAMMAP() returns a dict mapping stream names to lists of 
+        STREAMMAP() returns a dict mapping stream names to lists of
         recording names that contain that stream.'''
         if self._streammap is None:
             self.nodemap()
         return self._streammap
-    
-    def samplingrate(self, stream, expt=1, rec=1, node=None):
+
+    def samplingrate(self, stream, expt=None, rec=None, node=None):
         '''SAMPLINGRATE - Sampling rate of a stream
         SIMPLINGRATE(stream), where STREAM is one of the items returned
         by STREAMS() or its friends, returns the sampling rate of that
@@ -1161,16 +1234,20 @@ class Loader:
         "experiment" and "recording", but those can usually be left out,
         as the sampling rate is generally consistent for a whole session.'''
         node = self._autonode(stream, node)
+        if expt is None:
+            expt = self._firstexpt(node)
+        if rec is None:
+            rec = self._firstrec(node, expt)
         _populate(self._sfreqs, node, expt, rec)
         if stream not in self._sfreqs[node][expt][rec]:
             info = self._oebinsection(expt, rec, stream=stream, node=node)
             self._sfreqs[node][expt][rec][stream] = info['sample_rate']
         return self._sfreqs[node][expt][rec][stream]
-            
+
     def data(self, stream, expt=1, rec=1, node=None, stage='continuous'):
         '''DATA - Data for a stream
         DATA(stream) returns the data for the first recording from the
-        given stream as a TxC array. Optional arguments EXPT, REC, and 
+        given stream as a TxC array. Optional arguments EXPT, REC, and
         NODE further specify.
         By default, the file "continuous.dat" is loaded. Use optional
         argument STAGE to specify an alternative. (E.g., stage='salpa'
@@ -1189,13 +1266,12 @@ class Loader:
         binary scale to volts as a C-length array. Optional arguments EXPT, REC, and
         NODE further specify.'''
         info = self._oebinsection(expt, rec, stream=stream, node=node)
-        return [ ch['bit_volts'] for ch in info['channels'] ]
-
+        return [ch['bit_volts'] for ch in info['channels']]
 
     def channellist(self, stream, expt=1, rec=1, node=None):
         '''CHANNELLIST - List of channels for a stream
         CHANNELLIST(stream) returns the list of channels for that stream.
-        Each entry in the list is a dict with channel name and other 
+        Each entry in the list is a dict with channel name and other
         information straight from the OEBIN file.
         Optional arguments EXPT, REC, and NODE further specify.'''
         info = self._oebinsection(expt, rec, stream=stream, node=node)
@@ -1212,6 +1288,7 @@ class Loader:
         after you call ANALOGEVENTS() on the stream, those are included
         in the dict returned by EVENTS as well.'''
         node = self._autonode(stream, node)
+        
         _populate(self._events, node, expt, rec)
         _populate(self._ss0, node, expt, rec)
         if stream not in self._events[node][expt][rec]:
@@ -1225,20 +1302,23 @@ class Loader:
             self._events[node][expt][rec][stream] = {}
             channels = np.unique(cc)
             for c in channels:
-                idx = np.nonzero(cc==c)[0]
+                if c<=0:
+                    print("Warning: negative channel in event extraction", c)
+                    continue
+                idx = np.nonzero(cc == c)[0]
                 N = len(idx)
                 myss = ss[idx]
                 mydelta = delta[idx]
-                if len(myss) and mydelta[0]<0:
+                if len(myss) and mydelta[0] < 0:
                     myss = myss[1:]
                     mydelta = mydelta[1:]
-                if len(myss) and mydelta[-1]>0:
+                if len(myss) and mydelta[-1] > 0:
                     myss = myss[:-1]
                     mydelta = mydelta[:-1]
-                if np.any(np.diff(mydelta)==0):
+                if np.any(np.diff(mydelta) == 0):
                     raise Exception("Event edges should alternate")
                 N = len(myss)
-                myss = myss.reshape(N//2, 2) 
+                myss = myss.reshape(N // 2, 2)
                 self._events[node][expt][rec][stream][c] = myss
         return self._events[node][expt][rec][stream]
 
@@ -1253,9 +1333,9 @@ class Loader:
         if channel not in self._events[node][expt][rec][stream]:
             ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
             N = len(ss)
-            self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N//2, 2))
+            self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N // 2, 2))
         return self._events[node][expt][rec][stream]
-    
+
     def barcodes(self, stream, expt=1, rec=1, node=None, channel=1):
         '''BARCODES - Extract bar codes from a given stream
         times, codes = BARCODES(stream) returns the time stamps and codes of the
@@ -1267,17 +1347,17 @@ class Loader:
         node = self._autonode(stream, node)
         _populate(self._barcodes, node, expt, rec)
         if stream not in self._barcodes[node][expt][rec]:
-            if type(channel)==str:
+            if type(channel) == str:
                 self.analogevents(stream, channel, expt, rec, node)
             evts = self.events(stream, expt, rec, node)[channel]
             fs = self.samplingrate(stream, expt, rec, node)
-            ss_on = evts[:,0]
-            ss_off = evts[:,1]
+            ss_on = evts[:, 0]
+            ss_off = evts[:, 1]
             sss_on, sss_off = inferblocks(ss_on, fs, t_split_s=1, extra=ss_off)
-            sss = [np.stack((son,sof),1).flatten()
-                   for son,sof in zip(sss_on, sss_off)]
+            sss = [np.stack((son, sof), 1).flatten()
+                   for son, sof in zip(sss_on, sss_off)]
             uds = [np.stack((np.ones(son.shape),
-                             -np.ones(son.shape)),1).flatten()
+                             -np.ones(son.shape)), 1).flatten()
                    for son in sss_on]
             if self.cntlbarcodes:
                 tt, vv = _cntlbarcodes(sss, uds)
@@ -1285,13 +1365,13 @@ class Loader:
                 tt, vv = _openephysbarcodes(sss, uds, fs)
             self._barcodes[node][expt][rec][stream] = (tt, vv)
         return self._barcodes[node][expt][rec][stream]
-                
+
     def shifttime(self, times, sourcestream, deststream, expt=1, rec=1,
                   sourcenode=None, destnode=None,
                   sourcebarcode=1, destbarcode=1):
         '''SHIFTTIME - Translate event time stamps to other stream
-        SHIFTTIME(times, source, dest) translates event time stamps 
-        defined relative to the SOURCE stream for use as indices in 
+        SHIFTTIME(times, source, dest) translates event time stamps
+        defined relative to the SOURCE stream for use as indices in
         the DEST stream. Operates on the first experiment/recording
         unless EXPT and REC are specified.
         This relies on the existence of "bar codes" in one of the
@@ -1306,7 +1386,7 @@ class Loader:
         ss2, bb2 = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
         ss1_matched, ss2_matched = matchbarcodes(ss1, bb1, ss2, bb2)
-        if len(ss1_matched) < 2 + .2*(len(ss1) + len(ss2))/2:
+        if len(ss1_matched) < 2 + .2 * (len(ss1) + len(ss2)) / 2:
             raise Exception("Not enough matched bar codes")
 
         # Interpolate
@@ -1324,11 +1404,11 @@ class Loader:
             print(f"Caution: Extrapolation {len(isafter)} event(s) after end of bar codes")
             a_after, b_after = np.polyfit(ss1[-2:], ss2[-2:], 1)
             result[isafter] = a_after * result[isafter] + b_after
-        
+
         return result
 
-    
-    def translatedata(self, data, t0, sourcestream, deststream, expt=1, rec=1,
+    def translatedata(self, data, t0, sourcestream, deststream,
+                      expt=1, rec=1,
                       sourcenode=None, destnode=None,
                       sourcebarcode=1, destbarcode=1):
         '''TRANSLATEDATA - Translate a chunk of data from one timezone to another.
@@ -1345,7 +1425,7 @@ class Loader:
         t1 = t0 + N
         # Figure out edges of interval in destination time zone
         t01d = self.shifttime(np.array([t0, t1]), sourcestream, deststream, expt, rec,
-                               sourcenode, destnode, sourcebarcode, destbarcode)
+                              sourcenode, destnode, sourcebarcode, destbarcode)
         t0d = t01d[0]
         t1d = t01d[1]
         ttd = np.arange(t0d, t1d)
@@ -1357,7 +1437,6 @@ class Loader:
         datad = np.interp(tts, np.arange(t0, t1), data)
         return datad, t0d
 
-    
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1,
                     glitch_ms=None):
@@ -1373,20 +1452,20 @@ class Loader:
             nidaqstream = self.nidaqstream()
         events = self.events(nidaqstream, expt, rec)
         fs = self.samplingrate(nidaqstream, expt, rec)
-        if stream==nidaqstream:
+        if stream == nidaqstream:
             return events
         nevents = {}
         for ch, evts in events.items():
             if ch != nidaqbarcode:
                 if glitch_ms is not None:
-                    evts = dropglitches(evts, glitch_ms*fs/1000)
+                    evts = dropglitches(evts, glitch_ms * fs / 1000)
                 nevents[ch] = self.shifttime(evts, nidaqstream, stream,
                                              expt, rec,
                                              sourcebarcode=nidaqbarcode,
                                              destbarcode=destbarcode).astype(int)
         return nevents
 
-    def inferblocks(self, ss, stream, split_s=5.0, dropshort_ms=None):
+    def inferblocks(self, ss, stream, split_s=5.0, dropshort_ms=None, minblocklen=None):
         '''INFERBLOCKS - Infer blocks in lists of sample time stamps
         sss = INFERBLOCKS(ss, stream) splits events into inferred blocks based
         on lengthy pauses.
@@ -1398,6 +1477,7 @@ class Loader:
         stream : the stream from which those events originate (to retrieve sampling rate)
         t_split_s : threshold for splitting events, default is 5.0 seconds
         dropshort_ms: events that happen less than given time after previous are dropped
+        minblocklen: if given, blocks with fewer events than this are dropped
 
         Returns
         -------
@@ -1406,5 +1486,10 @@ class Loader:
         '''
 
         fs = self.samplingrate(stream)
-        ssb, sse = inferblocks(ss[:,0], fs, split_s, ss[:,1], dropshort_ms)
-        return [np.stack((sb, se), 1) for sb, se in zip(ssb, sse)]
+        if dropshort_ms:
+            ss = _deglitch(ss, dropshort_ms * fs/1e3)
+        ssb, sse = inferblocks(ss[:, 0], fs, split_s, ss[:, 1])
+        blks = [np.stack((sb, se), 1) for sb, se in zip(ssb, sse)]
+        if minblocklen is not None:
+            blks = [blk for blk in blks if len(blk)>=minblocklen]
+        return blks
