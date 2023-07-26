@@ -1248,6 +1248,7 @@ class Loader:
         in string form, e.g., "A0", or "A1", etc.) as if it were a digital
         channel and returns an Nx2 array of on/off event time stamps.
         '''
+        node = self._autonode(stream, node)
         self.events(stream, expt, rec, node) # just to populate the dict
         if channel not in self._events[node][expt][rec][stream]:
             ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
