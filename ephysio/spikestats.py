@@ -30,7 +30,7 @@ class SpikeStats:
             ndims = 0
             for idx in stim_idx:
                 if idx is not None:
-                    if type(idx)==list or type(idx)==tuple or type(idx)==np.ndarray:
+                    if type(idx)==list or type(idx)==tuple or type(idx)==np.ndarry:
                         ndims = len(idx)
                         break
             shape = np.zeros(ndims, int)
@@ -45,14 +45,14 @@ class SpikeStats:
 
     def latencies(self, celid, dt_start_ms=-50, dt_end_ms=150):
         '''LATENCIES - Extract peristimulus latencies for all spikes for a given neuron
-        lat, tri = LATENCIES(celid, dt_start_ms, dt_end_ms) extracts latencies (in ms)
-        and trial numbers for all of the spikes associated with the given CELID.
-        We return latencies in the interval from DT_start_ms to DT_end_ms. It is legit (and common)
-        for DT_start_ms to be negative.
+        lat, tri = LATENCIES(stim_s, spks, celid, dt_start_ms, dt_end_ms) extracts latencies (in ms)
+        and trial numbers for all of the spikes associated with the given CELID in the SPKS dataframe,
+        which must have columns (celid, time_s, lat_ms, tri), as per importSpikeData.
+        Unlike in the dataframe (where all latencies are nonnegative), we return latencies in the
+        interval from DT_start_ms to DT_end_ms. It is legit (and common) for DT_start_ms to be negative.
         Note that undefined behavior results if the interval (DT_start_ms, DT_end_ms) is longer than
         the shortest interval between stimuli. In particular, we are not smart enough to return a
-        spike twice in that case, once for each stimulus for which the interval encompasses the spike.
-        '''
+        spike twice in that case, once for each stimulus for which the interval encompasses the spike.'''
 
         t_spk_s = self.spks_s[celid]
         tri = np.searchsorted(self.stim_s + dt_start_ms / 1e3,
@@ -76,7 +76,7 @@ class SpikeStats:
         return nn
 
     def psth(self, celid, dt_start_ms=-50, dt_end_ms=150, binsize_ms=5, pertrial=False):
-        '''PSTH - Count spikes in each trial
+        '''PSTH - Peristimulus-time histogram for an individual cell
         nnn, bin_ms = PSTH(celid, dt_start_ms=-50, dt_end_ms=150, binsize_ms) counts up
         the number of spikes in latency bins across all trials.
         BIN_MS returns the *centers* of the latency bins.
@@ -87,11 +87,12 @@ class SpikeStats:
 
         lat, tri = self.latencies(celid, dt_start_ms=dt_start_ms, dt_end_ms=dt_end_ms)
         bin_ms = np.arange(dt_start_ms, dt_end_ms + .0001, binsize_ms)
-        bin_tri = np.arange(len(self.stim_s))
-        cnts, _, _ = np.histogram2d(lat, tri, (bin_ms, bin_tri))
-        if not pertrial:
-            cnts = np.sum(cnts, 1)
-        return cnts, (bin_ms[:-1] + bin_ms[1:]) / 2
+        if pertrial:
+            bin_tri = np.arange(len(self.stim_s))
+            cnts, _, _ = np.histogram2d(lat, tri, (bin_ms, bin_tri))
+        else:
+            cnts, _ = np.histogram(lat, bin_ms)
+        return cnts.astype(int), (bin_ms[:-1] + bin_ms[1:]) / 2
 
     def ntrials(self):
         '''NTRIALS - Total number of trials
@@ -100,15 +101,14 @@ class SpikeStats:
 
     def trialcounts(self):
         '''TRIALCOUNTS - Count trials by type
-        nnn = TRIALCOUNTS() returns a tensor of occurrences of each trial type, or None if no trial
-        types were passed into the constructor.
-        '''
+        nnn = TRIALCOUNTS() returns a tensor of occurrences of each trial type, or None if no trial types
+        were passed into the constructor.'''
         if self.stim_idx is None:
             raise Exception("Calculating trial counts by type requires knowing a trial type (idx)")
         nnn = np.zeros(self.idx_shape, int)
         for idx in self.stim_idx:
             if idx is not None:
-                nnn[tuple(idx)] += 1
+                nnn[idx] += 1
         return nnn
 
     def totalspikecountsbytrialtype(self, celid, dt_start_ms=-50, dt_end_ms=150):
@@ -122,4 +122,16 @@ class SpikeStats:
         for n, idx in zip(nn, self.stim_idx):
             if idx is not None:
                 nnn[tuple(idx)] += n
+        return nnn
+
+
+    def psthbytrialtype(self, celid, dt_start_ms=-50, dt_end_ms=150, binsize_ms=5):
+        cnts, lat = self.psth(celid, dt_start_ms, dt_end_ms, binsize_ms, pertrial=True)
+        T, R = cnts.shape
+        shp = list(self.idx_shape)
+        shp.append(T)
+        nnn = np.zeros(shp, int)
+        for cnt, idx in zip(cnts.T, self.stim_idx):
+            if idx is not None:
+                nnn[tuple(idx)] += cnt
         return nnn
