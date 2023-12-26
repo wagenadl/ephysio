@@ -88,7 +88,7 @@ class SpikeStats:
         lat, tri = self.latencies(celid, dt_start_ms=dt_start_ms, dt_end_ms=dt_end_ms)
         bin_ms = np.arange(dt_start_ms, dt_end_ms + .0001, binsize_ms)
         if pertrial:
-            bin_tri = np.arange(len(self.stim_s))
+            bin_tri = np.arange(len(self.stim_s) + 1) # hist returns n-1 columns
             cnts, _, _ = np.histogram2d(lat, tri, (bin_ms, bin_tri))
         else:
             cnts, _ = np.histogram(lat, bin_ms)
