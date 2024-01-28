@@ -1194,6 +1194,11 @@ class Loader:
         def explorenodes(node):
             pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
             streams = _quickglob(pattern)
+            pattern = self._recfolder(node, None, None) + "/continuous/*/"
+            allstreams = _quickglob(pattern)
+            for s in allstreams:
+                if s not in streams:
+                    print(f"Caution! Stream {s} does not have timestamps.npy file and will be ignored.")            
             return streams
 
         if self._nodemap is None:
