@@ -955,6 +955,10 @@ class Loader:
         root : location of data in the file system
         cntlbarcodes: Whether to expect CNTL-style bar codes. (The alternative
             is OpenEphys-style bar codes.)
+
+        Notes
+        -----
+        root must be specified with forward slashes, even on Windows.
         '''
 
         self.root = root
@@ -1191,9 +1195,17 @@ class Loader:
         NODEMAP() returns a dict mapping node names to lists of the streams
         contained in each node.'''
 
-        def explorenodes(node):
+        def explorenodes(node, timestamps_optional=False):
             pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
             streams = _quickglob(pattern)
+            if timestamps_optional:
+                # Tolerate lack of timestamps.npy files
+                # This can be OK if you only want to read continuous data.
+                # It does not work if you need to access events.
+                pattern = self._recfolder(node, None, None) + "/continuous/*/continuous.dat"
+                streams += _quickglob(pattern)
+                streams = list(set(streams))
+                streams.sort()
             return streams
 
         if self._nodemap is None:
@@ -1395,15 +1407,15 @@ class Loader:
         # Extrapolate times before the first barcode and after the last
         isbefore = np.nonzero(times < ss1[0])[0]
         if len(isbefore):
-            print(f"Caution: Extrapolation {len(isbefore)} event(s) before start of bar codes")
+            print(f"Caution: Extrapolating {len(isbefore)} event(s) before start of bar codes")
             a_before, b_before = np.polyfit(ss1[:2], ss2[:2], 1)
-            result[isbefore] = a_before * result[isbefore] + b_before
+            result[isbefore] = a_before * times[isbefore] + b_before
 
         isafter = np.nonzero(times > ss1[-1])[0]
         if len(isafter):
-            print(f"Caution: Extrapolation {len(isafter)} event(s) after end of bar codes")
+            print(f"Caution: Extrapolating {len(isafter)} event(s) after end of bar codes")
             a_after, b_after = np.polyfit(ss1[-2:], ss2[-2:], 1)
-            result[isafter] = a_after * result[isafter] + b_after
+            result[isafter] = a_after * times[isafter] + b_after
 
         return result
 
