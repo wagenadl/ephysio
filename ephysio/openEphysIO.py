@@ -1341,7 +1341,7 @@ class Loader:
         channel and returns an Nx2 array of on/off event time stamps.
         '''
         node = self._autonode(stream, node)
-        self.events(stream, expt, rec, node)  # just to populate the dict
+        self.events(stream, expt, rec, node) # just to populate the dict
         if channel not in self._events[node][expt][rec][stream]:
             ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
             N = len(ss)
