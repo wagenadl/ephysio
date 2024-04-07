@@ -666,24 +666,6 @@ def matchbarcodes(ss1, bb1, ss2, bb2):
     return (sss1, sss2)
 
 
-def aligntimestamps(ss_event_nidaq, ss_ni, ss_np):
-    '''
-    GETBARCODES -
-    Parameters
-    ----------
-
-    Returns
-    -------
-
-    Notes
-    -----
-
-    '''
-
-    ss_event_neuropix = np.interp(ss_event_nidaq, ss_ni, ss_np)
-    # return ss_event_neuropix
-
-
 def loadtranslatedevents(exptroot, expt=1, rec=1,
                          sourcestream='NI-DAQmx-142.0',
                          targetstream='Neuropix-PXI-126.0',
@@ -761,41 +743,6 @@ def dropglitches(ss, ds0):
         glitch = np.nonzero(np.diff(ss) < ds0)[0]
     return np.reshape(ss, [len(ss) // 2, 2])
 
-
-class EventTranslator:
-    '''EventTranslator transforms timestamps from one stream (e.g., a probe)
-    to another stream (either another probe or the NIDAQ.'''
-
-    def __init__(self, exptroot, expt=1, rec=1,
-                 sourcestream='NI-DAQmx-142.0',
-                 sourcettl=None,
-                 targetstream='Neuropix-PXI-126.0',
-                 targetttl=None,
-                 sourcenode=None,
-                 targetnode=None,
-                 sourcebarcodechannel=1):
-
-        (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=sourcestream, node=sourcenode)
-        if type(sourcebarcodechannel) == str and sourcebarcodechannel.startswith("A"):
-            sourcebarcodechannel = int(sourcebarcodechannel[1:])
-            ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
-                                                          node=sourcenode, channel=sourcebarcodechannel)
-            fw = bnc_states
-        else:
-            ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=sourcestream,
-                                                        ttl=sourcettl, node=sourcenode)
-        t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=sourcebarcodechannel)
-
-        (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=targetstream, node=targetnode)
-        (ss1, cc1, vv1, fw1) = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=targetstream, ttl=targetttl,
-                                          node=targetnode)
-        t_np, bc_np = getbarcodes(ss1, cc1, vv1, f_Hz)
-
-        self.ss_ni, self.ss_np = matchbarcodes(t_ni, bc_ni, t_np, bc_np)
-
-    def translate(self, ss):
-        '''Translates timestamps from the SOURCESTREAM to the TARGETSTREAM'''
-        return np.interp(ss, self.ss_ni, self.ss_np)
 
 
 # %%
