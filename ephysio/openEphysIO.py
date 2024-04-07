@@ -4,7 +4,7 @@ import numpy as np
 import ast
 import os
 import glob
-#import daw.ppersist
+
 
 def _nodetostr(node):
     if type(node) == str:
@@ -947,14 +947,14 @@ class Loader:
     This class allows easy access to all of this information.
     '''
 
-    def __init__(self, root, cntlbarcodes=True):
+    def __init__(self, root, cntlbarcodes=None):
         '''Loader(root) constructs a loader for OpenEphys data.
 
         Parameters
         ----------
         root : location of data in the file system
         cntlbarcodes: Whether to expect CNTL-style bar codes. (The alternative
-            is OpenEphys-style bar codes.)
+            is OpenEphys-style bar codes.) Set to None to autodetect.
 
         Notes
         -----
@@ -1371,10 +1371,15 @@ class Loader:
             uds = [np.stack((np.ones(son.shape),
                              -np.ones(son.shape)), 1).flatten()
                    for son in sss_on]
+
+            if self.cntlbarcodes is None:
+                self.cntlbarcodes = _probablycntlbarcodes(sss, uds, fs)
             if self.cntlbarcodes:
                 tt, vv = _cntlbarcodes(sss, uds)
             else:
                 tt, vv = _openephysbarcodes(sss, uds, fs)
+            if len(tt) < 5:
+                raise Exception("Not enough bar codes - Did you specify the right kind in the Loader constructor?")
             self._barcodes[node][expt][rec][stream] = (tt, vv)
         return self._barcodes[node][expt][rec][stream]
 
