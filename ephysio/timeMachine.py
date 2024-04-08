@@ -57,6 +57,9 @@ class BarCodes:
         else:
             return self._matchcodes(other)
 
+    def count(self):
+        return len(self.codes)
+
     def _matchtrivial(self, other):
         raise NotImplementedError("Trivial matching not implemented yet")
 
@@ -108,6 +111,8 @@ class CNTLBarCodes(BarCodes):
             elif len(ss) > 5:
                 noth += 1
         print(f"(Found {nbar} legit bar codes and {noth} other groups)")
+        if nbar < 5:
+            raise Exception("Not enough bar codes - Are you sure your experiment uses CNTL-style barcodes?")
 
     @staticmethod
     def probablyCNTL(ss, fs_Hz):
@@ -158,6 +163,8 @@ class OpenEphysBarCodes(BarCodes):
                     bit *= 2
             self.codes[ss[0]] = value
 
+        if len(self.codes) < 5:
+            raise Exception("Not enough bar codes - Are you sure your experiment uses OpenEphys-style barcodes?")
 
 class TimeMachine:
     """
@@ -166,7 +173,7 @@ class TimeMachine:
     def __init__(self, barcodes_dest=None, barcodes_source=None):
         '''Do not call without barcodes_dest and barcodes_source.'''
         self.ssbc_dest, self.ssbc_source = barcodes_dest.match(barcodes_source)
-        if len(self.ssbc_dest) < 2:
+        if len(self.ssbc_dest) < 2 + .2 * (barcodes_source.count() + barcodes_dest.count()) / 2:
             raise ValueError("Not enough barcodes to translate")
 
     def inverse(self):
@@ -176,7 +183,7 @@ class TimeMachine:
         rev.ssbc_dest = self.ssbc_source
         return rev
 
-    def translatedata(self, t0_source, data_source):
+    def translatedata(self, data_source, t0_source):
         """
         Translate the data from the source to the destination time zone.
 

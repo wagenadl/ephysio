@@ -5,6 +5,8 @@ import ast
 import os
 import glob
 
+import timeMachine
+
 
 def _nodetostr(node):
     if type(node) == str:
@@ -286,7 +288,7 @@ def _lameschmitt(dat, thr1, thr0):
     return np.array(iup), np.array(idn)
 
 
-def loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
+def _loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
     dat, _, _, _ = loadcontinuous(exptroot, expt, rec, stream, node=node)
     dat = dat[:, channel]
     thr = (np.min(dat) + np.max(dat)) / 2
@@ -297,111 +299,6 @@ def loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
     st = np.stack((1 + 0 * iup, -1 + 0 * idn), 1).flatten()
     return ss, cc, st
 
-
-def loadevents(exptroot: str, s0: int = 0, expt: int = 1, rec: int = 1, stream: int = 0, ttl: str = None,
-               node: int = None):
-    """
-    LOADEVENTS - Load events associated with a continuous data stream.
-
-    Parameters
-    ----------
-    exptroot : string
-        Path to the folder of the general experiment.
-    s0 :  integer, default is 0
-        The first timestamp when hit play on Open Ephys gui. It  must
-        be obtained from LOADCONTINUOUS.
-    expt : integer, default is 1
-        The subexperiment number.
-    rec : integer, default is 1
-        The recording number.
-    stream : integer or string, default is 0
-        The continuous data source we are getting the events for, either as an integer index or
-        as a direct folder name.
-    ttl : string, default is None, for automatic
-        The TTL event stream that we are loading
-
-    Returns
-    -------
-    ss_trl - s0 : numpy.ndarray
-        The timestamps (samplestamps) of events (in samples) relative to the recording.
-    bnc_cc : numpy.ndarray
-        The event channel numbers associated with each event.
-    bnc_states : numpy.ndarray
-        Contains +/-1 indicating whether the channel went up or down.
-    fw : numpy.ndarray
-        The full_words 8-bit event states for the collection of events.
-
-    Notes
-    -----
-    Optional argument STREAM specifies which continuous data to load. Default is
-        index 0. Alternatively, STREAM may be a string, specifying the
-        subdirectory, e.g., "Neuropix-PXI-126.1/". This method is preferred,
-        because it is more robust. Who knows whether those stream numbers are
-        going to be preserved from one day to the next.
-        (The final slash is optional.)
-    Note that SS_TRL can be used directly to index continuous data: Even though
-        timestamps are stored on disk relative to start of experiment, this
-        function subtracts the timestamp of the start of the recording to make life
-        a little easier.
-    """
-
-    node, stream = findnode(exptroot, expt, rec, stream, node)
-    if s0 is None:
-        s0, f_Hz, chlist = continuousmetadata(exptroot, expt, rec, stream, node)
-    fldr = f'{exptroot}/{node}/experiment{expt}/recording{rec}'
-    evtinfo = streaminfo(exptroot, expt, rec, 'events', stream, ttl, node)
-    subfldr = evtinfo['folder_name']
-    ss_trl = None
-    for fn in ['sample_numbers', 'timestamps']:
-        tsfn = f'{fldr}/events/{subfldr}/{fn}.npy'
-        if os.path.exists(tsfn):
-            ss_trl = np.load(tsfn)
-            break
-    if os.path.exists(f'{fldr}/events/{subfldr}/states.npy'):
-        # v0.6.x style
-        bnc_states = np.load(f'{fldr}/events/{subfldr}/states.npy')
-        bnc_cc = np.abs(bnc_states)
-    else:
-        # v0.5.x style
-        bnc_cc = np.load(f'{fldr}/events/{subfldr}/channels.npy')
-        bnc_states = np.load(f'{fldr}/events/{subfldr}/channel_states.npy')
-    fw = np.load(f'{fldr}/events/{subfldr}/full_words.npy')
-    return (ss_trl - s0, bnc_cc, bnc_states, fw)
-
-
-def filterevents(ss_trl, bnc_cc, bnc_states, channel=1, updown=1):
-    """
-    FILTEREVENTS - Return only selected events from an event stream.
-
-    Parameters
-    ----------
-    ss_trl : numpy.ndarray
-        The samplestamps of events (in samples) relative to the recording.
-    bnc_cc : numpy.ndarray
-        The event channel numbers associated with each event.
-    bnc_states : numpy.ndarray
-        Contains +/-(ch) indicating whether the channel went up or down.
-    channel : integer, default is 1
-        The channel to use
-    updown : integer, default is 1
-        Set to -1 to extract the down events.
-        Set to 0 to extract both the up and down events.
-
-    Returns
-    -------
-    numpy.ndarray : The extracted timestamps for the up or down or both events for the
-        selected channel.
-        If updown is set to 0 also return a numpy.ndarray which is the extracted positive or negative answer.
-    """
-
-    if updown == 1:
-        return ss_trl[np.logical_and(bnc_cc == channel, bnc_states > 0)]
-    elif updown == -1:
-        return ss_trl[np.logical_and(bnc_cc == channel, bnc_states < 0)]
-    elif updown == 0:
-        return ss_trl[bnc_cc == channel], np.sign(bnc_states[bnc_cc == channel])
-    else:
-        raise ValueError('Bad value for updown')
 
 
 def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None):
@@ -498,229 +395,6 @@ def extractblock(dat, ss_trl, f_Hz, margin_s=10.0):
     return dat[s0:s1, :], ss_trl - s0
 
 
-def _probablycntlbarcodes(sss, uds, f_Hz):
-    # Guess whether sss, uds represent new or old style bar codes
-    isnew = []
-    for ss, ud in zip(sss, uds):
-        if len(ss) > 4 and ud[0]:
-            if len(ss) == 18 and ss[1] - ss[0] < 450 * f_Hz / 30e3:
-                isnew.append(1)
-            else:
-                isnew.append(0)
-    return np.mean(isnew) > .5
-
-
-def _cntlbarcodes(sss, uds):
-    # This decodes bar codes from arduino code "stimbarcoduino"
-    codes = []
-    times = []
-    nbar = 0
-    noth = 0
-    for ss, ud in zip(sss, uds):
-        if len(ss) == 18 and ud[0] == 1 and not np.any(np.diff(ud) == 0):
-            # Potential barcode
-            s0 = ss[0]
-            dss = np.diff(ss)
-            code = 0
-            onems = dss[0] / 10
-            thr = dss[0] * 3 // 4
-            if np.any(dss < 3 * onems) or np.any(dss > 14 * onems):
-                noth += 1
-            else:
-                nbar += 1
-                for ds in dss[1:]:
-                    code *= 2
-                    if ds > thr:
-                        code += 1
-                codes.append(code)
-                times.append(s0)
-        elif len(ss) > 5:
-            noth += 1
-    print(f"(Found {nbar} legit bar codes and {noth} other groups)")
-
-    return times, codes
-
-
-def _openephysbarcodes(sss, uds, f_Hz):
-    sss_on = []
-    sss_off = []
-    for ss, ud in zip(sss, uds):
-        s0 = ss[0]
-        drop = np.nonzero(np.diff(ud) == 0)[0]
-        keep = np.ones(np.shape(ss), bool)
-        keep[drop] = False
-        ss = ss[keep]
-        ud = ud[keep]
-        ss_on = ss[ud > 0]
-        ss_off = ss[ud < 0]
-        while len(ss_off) > 0 and len(ss_on) > 0 and ss_off[0] < ss_on[0]:
-            ss_off = ss_off[1:]
-        while len(ss_on) > 0 and len(ss_off) > 0 and ss_on[-1] > ss_off[-1]:
-            ss_on = ss_on[:-1]
-        if len(ss_on) > 0 and len(ss_off) > 0:
-            sss_on.append(ss_on)
-            sss_off.append(ss_off)
-        else:
-            print(f'Bar code dropped at {s0}')
-
-    codes = []
-    times = []
-    PREDURATION_MS = 20
-    INTER_BARCODE_INTERVAL_S = 30
-    BARCODE_BITS = 32
-    BITDURATION_MS = (INTER_BARCODE_INTERVAL_S - 1) * 32 / BARCODE_BITS
-    # See https://github.com/open-ephys/sync-barcodes/blob/main/arduino-barcodes/arduino-barcodes.ino line 37.
-    PERIOD = BITDURATION_MS * f_Hz / 1000
-
-    N = len(sss_on)
-    if N > 10:
-        # Hack for early version of Frank Lanfranchi's barcode generator
-        ss1 = [ss[0] for ss in sss_on]
-        ds1 = np.diff(ss1)
-        if np.median(ds1) < f_Hz * 10.0:
-            PERIOD = 120
-
-    for n in range(N):  # Loop over all the codes
-        dton = sss_off[n][1:] - sss_on[n][1:]  # Skip first pulse
-        dtoff = sss_on[n][1:] - sss_off[n][:-1]
-        dtoff[0] -= PREDURATION_MS * f_Hz / 1000  # First interval start marker
-        dton = np.round(dton / PERIOD).astype(int)
-        dtoff = np.round(dtoff / PERIOD).astype(int)
-        value = 0
-        K = len(dton)
-        bit = 1
-        for k in range(K):
-            for q in range(dtoff[k]):
-                bit *= 2
-            for q in range(dton[k]):
-                value += bit
-                bit *= 2
-        codes.append(value)
-        times.append(sss_on[n][0])
-    return times, codes
-
-
-def getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=1, newstyle=None):
-    '''
-    GETBARCODES - Obtain barcodes from samplestamped rising and falling edges.
-
-    Parameters
-    ----------
-    ss_trl : numpy.ndarray
-        The sample stamps of an event (in samples) relative to the recording.
-    bnc_cc : numpy.ndarray
-        The event channel numbers associated with each event.
-    bnc_states : numpy.ndarray
-        Contains +/-(channel) indicating whether the channel went up or down.
-    f_Hz : integer
-        Frequency (in Hz) of recording sampling rate.
-    channel : integer, default is 1
-        The channel to use.
-    newstyle: Bool: True for new style bar codes, False for old style, or None
-        for use heuristic
-
-    Returns
-    -------
-    times : time stamps of starts of bar codes, in same units as ss_trl
-    codes : decoded bar codes (16-bit integers)
-    '''
-
-    ss, ud = filterevents(ss_trl, bnc_cc, bnc_states, channel=channel, updown=0)
-    sss, uds = inferblocks(ss, t_split_s=.08, f_Hz=f_Hz, extra=ud)
-    if newstyle is None:
-        newstyle = _probablycntlbarcodes(sss, uds, f_Hz)
-
-    if newstyle:
-        print('New bar codes!')
-        return _cntlbarcodes(sss, uds)
-    else:
-        print('Old bar codes!')
-        return _openephysbarcodes(sss, uds, f_Hz)
-
-
-def matchbarcodes(ss1, bb1, ss2, bb2):
-    '''
-    MATCHBARCODES -
-    Parameters
-    ----------
-
-    Returns
-    -------
-
-    Notes
-    -----
-
-    '''
-    sss1 = []
-    sss2 = []
-    N1 = len(ss1)
-    for n in range(N1):
-        b = bb1[n]
-        try:
-            idx = bb2.index(b)
-            sss1.append(ss1[n])
-            sss2.append(ss2[idx])
-        except:
-            print(f'Caution: no match for barcode #{n}')
-            pass  # Barcode not matched
-    return (sss1, sss2)
-
-
-def loadtranslatedevents(exptroot, expt=1, rec=1,
-                         sourcestream='NI-DAQmx-142.0',
-                         targetstream='Neuropix-PXI-126.0',
-                         targetttl=None,
-                         sourcenode=None,
-                         targetnode=None,
-                         newstylebarcodes=None,
-                         sourcebarcodechannel=1):
-    '''
-    LOADTRANSLATEDEVENTS - As LOADEVENTS, but ss_trl is translated to
-    samples in the target stream.
-
-    Parameters
-    ----------
-    exptroot, expt, rec : as for loadevents
-    sourcestream: the stream from which the events will be loaded
-    targetstream: the stream into which the timestamps will be translated
-    newstylebarcodes: set to True to expect CNTL-style bar codes, False to
-        expect OpenEphys-style bar codes, or None to auto-detect.
-    sourcebarcodechannel: the digital input that the barcode generate is
-        connected on the source. Set to "A0" to "A7" to extract bar codes
-        from analog channels instead.
-
-    In addition, the following parameters have defaults that are usually sufficient:
-    sourcenode, targetnode: node identifiers for source and target streams
-    targetttl: the TTL group number for the target stream
-
-    '''
-
-    _, fs_Hz_src, _ = continuousmetadata(exptroot, expt, rec, stream=sourcestream)
-
-    if type(sourcebarcodechannel) == str and sourcebarcodechannel.startswith("A"):
-        sourcebarcodechannel = int(sourcebarcodechannel[1:])
-        ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
-                                                      node=sourcenode, channel=sourcebarcodechannel)
-        fw = bnc_states
-    else:
-        ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=0, expt=expt, rec=rec, stream=sourcestream,
-                                                    node=sourcenode)
-    t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, fs_Hz_src, newstyle=newstylebarcodes,
-                              channel=sourcebarcodechannel)
-
-    _, fs_Hz_tgt, _ = continuousmetadata(exptroot, expt, rec, stream=targetstream)
-    (ss1, cc1, vv1, fw1) = loadevents(exptroot, s0=None, expt=expt, rec=rec, stream=targetstream, ttl=targetttl,
-                                      node=targetnode)
-    t_np, bc_np = getbarcodes(ss1, cc1, vv1, fs_Hz_tgt, newstyle=newstylebarcodes)
-
-    ss_ni, ss_np = matchbarcodes(t_ni, bc_ni, t_np, bc_np)
-    ss_trl = np.interp(ss_trl, ss_ni, ss_np)
-    idx = np.nonzero(bnc_cc != 1)
-    ss_trl = ss_trl[idx]
-    bnc_cc = bnc_cc[idx]
-    bnc_states = bnc_states[idx]
-    fw = fw[idx]
-    return ss_trl.astype(int), bnc_cc, bnc_states, fw
 
 
 def dropglitches(ss, ds0):
@@ -743,106 +417,6 @@ def dropglitches(ss, ds0):
         glitch = np.nonzero(np.diff(ss) < ds0)[0]
     return np.reshape(ss, [len(ss) // 2, 2])
 
-
-
-# %%
-def read_broken_array(fp, allow_pickle=False, pickle_kwargs=None):
-    """
-    Read an array from an NPY file without reshaping.
-    This is copied from numpy.lib.format to deal with files that got truncated because of disk-full errors.
-    Be very, very careful. Always check that the results make sense before trusting them. You may be loading
-    garbage.
-    FP must be an opened .npy file.
-
-    Parameters
-    ----------
-    fp : file_like object
-        If this is not a real file object, then this may take extra memory
-        and time.
-    allow_pickle : bool, optional
-        Whether to allow writing pickled data. Default: False
-
-        .. versionchanged:: 1.16.3
-            Made default False in response to CVE-2019-6446.
-
-    pickle_kwargs : dict
-        Additional keyword arguments to pass to pickle.load. These are only
-        useful when loading object arrays saved on Python 2 when using
-        Python 3.
-
-    Returns
-    -------
-    array : ndarray
-        The array from the data on disk.
-    shape: tuple
-        The shape that array should have had
-    isfortran: bool
-        Is the data stored in Fortran rather than C order (?)
-
-    Raises
-    ------
-    ValueError
-        If the data is invalid, or allow_pickle=False and the file contains
-        an object array.
-
-    """
-
-    from numpy.lib.format import read_magic, _check_version, _read_array_header, isfileobj
-    import numpy
-
-    version = read_magic(fp)
-    _check_version(version)
-    shape, fortran_order, dtype = _read_array_header(fp, version)
-    if len(shape) == 0:
-        count = 1
-    else:
-        count = numpy.multiply.reduce(shape, dtype=numpy.int64)
-
-    # Now read the actual data.
-    if dtype.hasobject:
-        # The array contained Python objects. We need to unpickle the data.
-        if not allow_pickle:
-            raise ValueError("Object arrays cannot be loaded when "
-                             "allow_pickle=False")
-        if pickle_kwargs is None:
-            pickle_kwargs = {}
-        try:
-            array = pickle.load(fp, **pickle_kwargs)
-        except UnicodeError as err:
-            # Friendlier error message
-            raise UnicodeError("Unpickling a python object failed: %r\n"
-                               "You may need to pass the encoding= option "
-                               "to numpy.load" % (err,))
-    else:
-        if isfileobj(fp):
-            # We can use the fast fromfile() function.
-            array = numpy.fromfile(fp, dtype=dtype, count=count)
-        else:
-            # This is not a real file. We have to read it the
-            # memory-intensive way.
-            # crc32 module fails on reads greater than 2 ** 32 bytes,
-            # breaking large reads from gzip streams. Chunk reads to
-            # BUFFER_SIZE bytes to avoid issue and reduce memory overhead
-            # of the read. In non-chunked case count < max_read_count, so
-            # only one read is performed.
-
-            # Use np.ndarray instead of np.empty since the latter does
-            # not correctly instantiate zero-width string dtypes; see
-            # https://github.com/numpy/numpy/pull/6430
-            array = numpy.ndarray(count, dtype=dtype)
-
-            if dtype.itemsize > 0:
-                # If dtype.itemsize == 0 then there's nothing more to read
-                max_read_count = BUFFER_SIZE // min(BUFFER_SIZE, dtype.itemsize)
-
-                for i in range(0, count, max_read_count):
-                    read_count = min(max_read_count, count - i)
-                    read_size = int(read_count * dtype.itemsize)
-                    data = _read_bytes(fp, read_size, "array data")
-                    array[i:i + read_count] = numpy.frombuffer(data, dtype=dtype,
-                                                               count=read_count)
-
-    return array, shape, fortran_order
 
 
 def _populate(dct, *args):
@@ -1290,19 +864,21 @@ class Loader:
         node = self._autonode(stream, node)
         self.events(stream, expt, rec, node) # just to populate the dict
         if channel not in self._events[node][expt][rec][stream]:
-            ss, cc, st = loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
+            ss, cc, st = _loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
             N = len(ss)
             self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N // 2, 2))
         return self._events[node][expt][rec][stream]
 
     def barcodes(self, stream, expt=1, rec=1, node=None, channel=1):
         '''BARCODES - Extract bar codes from a given stream
-        times, codes = BARCODES(stream) returns the time stamps and codes of the
+        barcodes = BARCODES(stream) returns the time stamps and codes of the
         bar codes associated with the given stream. Optional arguments EXPT, REC,
         NODE further specify.
         Optional argument CHANNEL specifies the digital channel from which the
         bar codes are to be read. If CHANNEL is a string like "A0", the bar codes
-        are read from the given analog channel.'''
+        are read from the given analog channel.
+        The result is of the timeMachine.BarCodes.
+        '''
         node = self._autonode(stream, node)
         _populate(self._barcodes, node, expt, rec)
         if stream not in self._barcodes[node][expt][rec]:
@@ -1310,24 +886,14 @@ class Loader:
                 self.analogevents(stream, channel, expt, rec, node)
             evts = self.events(stream, expt, rec, node)[channel]
             fs = self.samplingrate(stream, expt, rec, node)
-            ss_on = evts[:, 0]
-            ss_off = evts[:, 1]
-            sss_on, sss_off = inferblocks(ss_on, fs, t_split_s=1, extra=ss_off)
-            sss = [np.stack((son, sof), 1).flatten()
-                   for son, sof in zip(sss_on, sss_off)]
-            uds = [np.stack((np.ones(son.shape),
-                             -np.ones(son.shape)), 1).flatten()
-                   for son in sss_on]
-
+            ss = evts.flatten()
             if self.cntlbarcodes is None:
-                self.cntlbarcodes = _probablycntlbarcodes(sss, uds, fs)
+                self.cntlbarcodes = timeMachine.CNTLBarCodes.probablyCNTL(ss, fs)
             if self.cntlbarcodes:
-                tt, vv = _cntlbarcodes(sss, uds)
+                self._barcodes[node][expt][rec][stream] = timeMachine.CNTLBarCodes(ss, fs)
             else:
-                tt, vv = _openephysbarcodes(sss, uds, fs)
-            if len(tt) < 5:
-                raise Exception("Not enough bar codes - Did you specify the right kind in the Loader constructor?")
-            self._barcodes[node][expt][rec][stream] = (tt, vv)
+                self._barcodes[node][expt][rec][stream] = timeMachine.OpenEphysBarCodes(ss, fs)
+
         return self._barcodes[node][expt][rec][stream]
 
     def shifttime(self, times, sourcestream, deststream, expt=1, rec=1,
@@ -1345,31 +911,12 @@ class Loader:
 
         Perhaps this function should be called TRANSLATEEVENTTIME.'''
 
-        ss1, bb1 = self.barcodes(sourcestream, expt, rec,
+        bc_source = self.barcodes(sourcestream, expt, rec,
                                  sourcenode, sourcebarcode)
-        ss2, bb2 = self.barcodes(deststream, expt, rec,
+        bc_dest = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
-        ss1_matched, ss2_matched = matchbarcodes(ss1, bb1, ss2, bb2)
-        if len(ss1_matched) < 2 + .2 * (len(ss1) + len(ss2)) / 2:
-            raise Exception("Not enough matched bar codes")
-
-        # Interpolate
-        result = np.interp(times, ss1_matched, ss2_matched)
-
-        # Extrapolate times before the first barcode and after the last
-        isbefore = np.nonzero(times < ss1[0])[0]
-        if len(isbefore):
-            print(f"Caution: Extrapolating {len(isbefore)} event(s) before start of bar codes")
-            a_before, b_before = np.polyfit(ss1[:2], ss2[:2], 1)
-            result[isbefore] = a_before * times[isbefore] + b_before
-
-        isafter = np.nonzero(times > ss1[-1])[0]
-        if len(isafter):
-            print(f"Caution: Extrapolating {len(isafter)} event(s) after end of bar codes")
-            a_after, b_after = np.polyfit(ss1[-2:], ss2[-2:], 1)
-            result[isafter] = a_after * times[isafter] + b_after
-
-        return result
+        tm = timeMachine.TimeMachine(bc_dest, bc_source)
+        return tm.translatetimes(times)
 
     def translatedata(self, data, t0, sourcestream, deststream,
                       expt=1, rec=1,
@@ -1385,21 +932,12 @@ class Loader:
         Note that Txx are sample time stamps, i.e., expressed in samples, not seconds.
         See SHIFTTIME for other parameters and conditions.
         '''
-        N = len(data)
-        t1 = t0 + N
-        # Figure out edges of interval in destination time zone
-        t01d = self.shifttime(np.array([t0, t1]), sourcestream, deststream, expt, rec,
-                              sourcenode, destnode, sourcebarcode, destbarcode)
-        t0d = t01d[0]
-        t1d = t01d[1]
-        ttd = np.arange(t0d, t1d)
-        # Figure out timepoints in source time zone corresponding to interval in dest.
-        # Note backward translation
-        tts = self.shifttime(ttd, deststream, sourcestream, expt, rec,
-                             destnode, sourcenode, destbarcode, sourcebarcode)
-        # Interpolate the data
-        datad = np.interp(tts, np.arange(t0, t1), data)
-        return datad, t0d
+        bc_source = self.barcodes(sourcestream, expt, rec,
+                                  sourcenode, sourcebarcode)
+        bc_dest = self.barcodes(deststream, expt, rec,
+                                destnode, destbarcode)
+        tm = timeMachine.TimeMachine(bc_dest, bc_source)
+        return tm.translatedata(data, t0)
 
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1,
