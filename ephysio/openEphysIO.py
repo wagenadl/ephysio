@@ -128,6 +128,58 @@ def recordingpath(exptroot, expt, rec, stream, node):
     fldr = f'{exptroot}/{node}/experiment{expt}/recording{rec}'
     return fldr
 
+
+def contfilename(exptroot, expt=1, rec=1, stream=0, infix='continuous', node=None):
+    """
+    CONTFILENAME - Return the filename of the continuous data for a given recording.
+
+    Parameters
+    ----------
+    exptroot : string
+        Path to the folder of the general experiment.
+    expt : integer, default is 1
+        The subexperiment number.
+    rec : integer, default is 1
+        The recording number.
+    stream : integer or string, default is 0
+        The continuous data source we are getting the filename for.
+
+    Returns
+    -------
+    A tuple (ifn, tsfn, info) comprising:
+    ifn : string
+        Full filename of the continuous.dat file.
+    tsfn : numpy.ndarray
+        Timestamps for the slected recording in the selected subexperiment.
+    info : string
+        The corresponding "continfo" section of the oebin file.
+
+    Notes
+    -----
+    Optional argument STREAM specifies which continuous data to load. Default is
+        index 0. Alternatively, STREAM may be a string, specifying the
+        subdirectory, e.g., "Neuropix-PXI-126.1/". This method is preferred,
+        because it is more robust. Who knows whether those stream numbers are
+        going to be preserved from one day to the next.
+        (The final slash is optional.)
+    """
+
+    node, stream = findnode(exptroot, expt, rec, stream, node)
+    fldr = recordingpath(exptroot, expt, rec, stream, node)
+    continfo = streaminfo(exptroot, expt, rec, 'continuous', stream, node=node)
+    subfldr = continfo['folder_name']
+    if subfldr.endswith('/'):
+        subfldr = subfldr[:-1]
+    ifn = f'{fldr}/continuous/{subfldr}/{infix}.dat'
+    for fn in ['sample_numbers', 'timestamps']:
+        tsfn = f'{fldr}/continuous/{subfldr}/{fn}.npy'
+        if os.path.exists(tsfn):
+            break
+    if not os.path.exists(tsfn):
+        raise Exception("No time stamps")
+    return ifn, tsfn, continfo
+
+
 def _continuousmetadata(tsfn, continfo):
     tms = np.load(tsfn, mmap_mode='r')
     s0 = tms[0]
@@ -246,6 +298,76 @@ def loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
     return ss, cc, st
 
 
+def loadevents(exptroot: str, s0: int = 0, expt: int = 1, rec: int = 1, stream: int = 0, ttl: str = None,
+               node: int = None):
+    """
+    LOADEVENTS - Load events associated with a continuous data stream.
+
+    Parameters
+    ----------
+    exptroot : string
+        Path to the folder of the general experiment.
+    s0 :  integer, default is 0
+        The first timestamp when hit play on Open Ephys gui. It  must
+        be obtained from LOADCONTINUOUS.
+    expt : integer, default is 1
+        The subexperiment number.
+    rec : integer, default is 1
+        The recording number.
+    stream : integer or string, default is 0
+        The continuous data source we are getting the events for, either as an integer index or
+        as a direct folder name.
+    ttl : string, default is None, for automatic
+        The TTL event stream that we are loading
+
+    Returns
+    -------
+    ss_trl - s0 : numpy.ndarray
+        The timestamps (samplestamps) of events (in samples) relative to the recording.
+    bnc_cc : numpy.ndarray
+        The event channel numbers associated with each event.
+    bnc_states : numpy.ndarray
+        Contains +/-1 indicating whether the channel went up or down.
+    fw : numpy.ndarray
+        The full_words 8-bit event states for the collection of events.
+
+    Notes
+    -----
+    Optional argument STREAM specifies which continuous data to load. Default is
+        index 0. Alternatively, STREAM may be a string, specifying the
+        subdirectory, e.g., "Neuropix-PXI-126.1/". This method is preferred,
+        because it is more robust. Who knows whether those stream numbers are
+        going to be preserved from one day to the next.
+        (The final slash is optional.)
+    Note that SS_TRL can be used directly to index continuous data: Even though
+        timestamps are stored on disk relative to start of experiment, this
+        function subtracts the timestamp of the start of the recording to make life
+        a little easier.
+    """
+
+    node, stream = findnode(exptroot, expt, rec, stream, node)
+    if s0 is None:
+        s0, f_Hz, chlist = continuousmetadata(exptroot, expt, rec, stream, node)
+    fldr = f'{exptroot}/{node}/experiment{expt}/recording{rec}'
+    evtinfo = streaminfo(exptroot, expt, rec, 'events', stream, ttl, node)
+    subfldr = evtinfo['folder_name']
+    ss_trl = None
+    for fn in ['sample_numbers', 'timestamps']:
+        tsfn = f'{fldr}/events/{subfldr}/{fn}.npy'
+        if os.path.exists(tsfn):
+            ss_trl = np.load(tsfn)
+            break
+    if os.path.exists(f'{fldr}/events/{subfldr}/states.npy'):
+        # v0.6.x style
+        bnc_states = np.load(f'{fldr}/events/{subfldr}/states.npy')
+        bnc_cc = np.abs(bnc_states)
+    else:
+        # v0.5.x style
+        bnc_cc = np.load(f'{fldr}/events/{subfldr}/channels.npy')
+        bnc_states = np.load(f'{fldr}/events/{subfldr}/channel_states.npy')
+    fw = np.load(f'{fldr}/events/{subfldr}/full_words.npy')
+    return (ss_trl - s0, bnc_cc, bnc_states, fw)
+
 
 def filterevents(ss_trl, bnc_cc, bnc_states, channel=1, updown=1):
     """
@@ -281,6 +403,99 @@ def filterevents(ss_trl, bnc_cc, bnc_states, channel=1, updown=1):
     else:
         raise ValueError('Bad value for updown')
 
+
+def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None):
+    """
+    INFERBLOCKS - Split events into inferred stimulus blocks based on
+    lengthy pauses.
+
+    Parameters
+    ----------
+    ss_trl : numpy.ndarray
+        The samplestamps of events (in samples) relative to the recording.
+        (obtained from LOADEVENTS or FILTEREVENTS)
+    f_Hz : integer
+        Frequency (in Hz) of recording sampling rate.
+    t_split_s : numeric, default is 5.0
+    dropshort_ms: events that happen less than given time after previous are dropped
+
+    Returns
+    -------
+    ss_block : list
+        List of numpy arrays samplestamps, one per block.
+    Notes
+    -----
+    ss_block = INFERBLOCKS(ss_trl, f_Hz) splits the event time stamps SS_TRL (from LOADEVENTS
+    or FILTEREVENTS) into blocks with cuts when adjacent events are more than 5 seconds
+    apart. Optional argument T_SPLIT_S overrides that threshold.
+    """
+
+    if dropshort_ms is not None:
+        dt = np.diff(ss_trl)
+        drop = np.nonzero(dt < dropshort_ms * f_Hz / 1000)[0] + 1
+        print("drop short", drop, ss_trl.shape, dropshort_ms, f_Hz)
+        ss_trl = np.delete(ss_trl, drop)
+    ds = np.diff(ss_trl)
+    thresh = int(t_split_s * f_Hz)
+    ds[np.isnan(ss_trl[1:])] = thresh + 1
+    ds[np.isnan(ss_trl[:-1])] = thresh + 1
+    idx = np.nonzero(ds >= thresh)[0] + 1
+    N = len(ss_trl)
+    idx = np.hstack((0, idx, N))
+    ss_block = []
+    for k in range(len(idx) - 1):
+        ss_block.append(ss_trl[idx[k]:idx[k + 1]])
+    if extra is None:
+        return ss_block
+
+    def blockedextra(extra):
+        ex_block = []
+        for k in range(len(idx) - 1):
+            ex_block.append(extra[idx[k]:idx[k + 1]])
+        return ex_block
+
+    if type(extra) == tuple:
+        ex_block = tuple([blockedextra(x) for x in extra])
+    else:
+        ex_block = blockedextra(extra)
+    return ss_block, ex_block
+
+
+def extractblock(dat, ss_trl, f_Hz, margin_s=10.0):
+    '''
+    EXTRACTBLOCK - Extract ephys data for a block of vis_stimuli identified by SS_TRL
+    which must be one of the items in the list returned by INFERBLOCKS.
+
+    Parameters
+    ----------
+    dat : numpy.ndarray
+        Ephys data from where we want to extract from.
+    ss_trl : numpy.ndarray
+        The samplestamps of event (in samples) relative to the recording which
+        should be one of the items in the list returned by INFERBLOCKS.
+    f_Hz : integer
+        Frequency (in Hz) of recording sampling rate.
+    margin_s : numeric, default is 10.0
+        Length of the margin (in seconds) included at the beginning and end of
+        the block (unless of course the block starts less than 10 s from the
+        beginning of the file or analogously at the end).
+
+    Returns
+    -------
+    dat[s0:s1,:] : numpy.ndarray
+        Extracted portion of ephys data.
+    ss_trl - s0 : numpy.ndarray
+        Shifted timestamps of events (relative to the extracted portion of data).
+    '''
+
+    s0 = ss_trl[0] - int(margin_s * f_Hz)
+    s1 = ss_trl[-1] + int(margin_s * f_Hz)
+    S, C = dat.shape
+    if s0 < 0:
+        s0 = 0
+    if s1 > S:
+        s1 = S
+    return dat[s0:s1, :], ss_trl - s0
 
 
 def _probablycntlbarcodes(sss, uds, f_Hz):
@@ -450,6 +665,62 @@ def matchbarcodes(ss1, bb1, ss2, bb2):
             pass  # Barcode not matched
     return (sss1, sss2)
 
+
+def loadtranslatedevents(exptroot, expt=1, rec=1,
+                         sourcestream='NI-DAQmx-142.0',
+                         targetstream='Neuropix-PXI-126.0',
+                         targetttl=None,
+                         sourcenode=None,
+                         targetnode=None,
+                         newstylebarcodes=None,
+                         sourcebarcodechannel=1):
+    '''
+    LOADTRANSLATEDEVENTS - As LOADEVENTS, but ss_trl is translated to
+    samples in the target stream.
+
+    Parameters
+    ----------
+    exptroot, expt, rec : as for loadevents
+    sourcestream: the stream from which the events will be loaded
+    targetstream: the stream into which the timestamps will be translated
+    newstylebarcodes: set to True to expect CNTL-style bar codes, False to
+        expect OpenEphys-style bar codes, or None to auto-detect.
+    sourcebarcodechannel: the digital input that the barcode generate is
+        connected on the source. Set to "A0" to "A7" to extract bar codes
+        from analog channels instead.
+
+    In addition, the following parameters have defaults that are usually sufficient:
+    sourcenode, targetnode: node identifiers for source and target streams
+    targetttl: the TTL group number for the target stream
+
+    '''
+
+    _, fs_Hz_src, _ = continuousmetadata(exptroot, expt, rec, stream=sourcestream)
+
+    if type(sourcebarcodechannel) == str and sourcebarcodechannel.startswith("A"):
+        sourcebarcodechannel = int(sourcebarcodechannel[1:])
+        ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
+                                                      node=sourcenode, channel=sourcebarcodechannel)
+        fw = bnc_states
+    else:
+        ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=0, expt=expt, rec=rec, stream=sourcestream,
+                                                    node=sourcenode)
+    t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, fs_Hz_src, newstyle=newstylebarcodes,
+                              channel=sourcebarcodechannel)
+
+    _, fs_Hz_tgt, _ = continuousmetadata(exptroot, expt, rec, stream=targetstream)
+    (ss1, cc1, vv1, fw1) = loadevents(exptroot, s0=None, expt=expt, rec=rec, stream=targetstream, ttl=targetttl,
+                                      node=targetnode)
+    t_np, bc_np = getbarcodes(ss1, cc1, vv1, fs_Hz_tgt, newstyle=newstylebarcodes)
+
+    ss_ni, ss_np = matchbarcodes(t_ni, bc_ni, t_np, bc_np)
+    ss_trl = np.interp(ss_trl, ss_ni, ss_np)
+    idx = np.nonzero(bnc_cc != 1)
+    ss_trl = ss_trl[idx]
+    bnc_cc = bnc_cc[idx]
+    bnc_states = bnc_states[idx]
+    fw = fw[idx]
+    return ss_trl.astype(int), bnc_cc, bnc_states, fw
 
 
 def dropglitches(ss, ds0):
