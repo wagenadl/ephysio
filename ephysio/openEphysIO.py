@@ -15,7 +15,7 @@ def _nodetostr(node):
         return f'Record Node {node}'
 
 
-def loadoebin(exptroot, expt=1, rec=1, node=None):
+def _loadoebin(exptroot, expt=1, rec=1, node=None):
     """
     LOADOEBIN - Load the Open Ephys oebin file.  Oebin is a JSON file detailing
     channel information, channel metadata and event metadata descriptions.
@@ -47,223 +47,6 @@ def loadoebin(exptroot, expt=1, rec=1, node=None):
     return oebin
 
 
-def findnode(exptroot, expt, rec, stream, node=None):
-    if not os.path.exists(exptroot):
-        raise ValueError(f'Experiment not found: {exptroot}')
-
-    if node is not None:
-        streampaths = glob.glob(f'{exptroot}/{node}/experiment{expt}/recording{rec}/continuous/{stream}')
-        if len(streampaths) == 1:
-            streampath = streampaths[0].replace('\\', '/')
-            stream = streampath.split('/')[-1]
-        else:
-            raise ValueError(f'Stream {stream} not found')
-        return node, stream
-
-    if os.path.exists(f'{exptroot}/experiment{expt}'):
-        streampaths = glob.glob(f'{exptroot}/experiment{expt}/recording{rec}/continuous/{stream}')
-        if len(streampaths) == 1:
-            streampath = streampaths[0].replace('\\', '/')
-            stream = streampath.split('/')[-1]
-        else:
-            raise ValueError(f'Stream {stream} not found')
-        return '', stream
-
-    nodepaths = glob.glob(f'{exptroot}/Record Node *')
-    for nodepath in nodepaths:
-        nodepath = nodepath.replace('\\', '/')
-        streampaths = glob.glob(f'{nodepath}/experiment{expt}/recording{rec}/continuous/{stream}')
-        if len(streampaths) == 1:
-            streampath = streampaths[0].replace('\\', '/')
-            return nodepath.split('/')[-1], streampath.split('/')[-1]
-    raise ValueError('No node found for given expt/rec/stream')
-
-
-def streaminfo(exptroot, expt=1, rec=1, section='continuous', stream=0, ttl=None, node=None):
-    """
-    STREAMINFO - Return a dictionary containing the information session
-    about the selected stream from the oebin file.
-
-    Parameters
-    ----------
-    exptroot : string
-        Path to the folder of the general experiment.
-    expt : integer, default is 1
-        The subexperiment number.
-    rec : integer, default is 1
-        The recording number.
-    section : string, default is 'continuous'
-        The name of the file
-    stream : integer or string, default is 0. If numeric, node must be specified if using modern openephys
-        The continuous data source we are getting the filename for.
-    node : The recording node to use. Usually left as None, in which case STREAM is used to find the node
-
-    Returns
-    -------
-        Return a dictionary containing the information session about the
-        indicated stream from the oebin file.
-    Notes
-    -----
-    Optional argument STREAM specifies which continuous data to load. Default is
-        index 0. Alternatively, STREAM may be a string, specifying the
-        subdirectory, e.g., "Neuropix-PXI-126.1/". This method is preferred,
-        because it is more robust. Who knows whether those stream numbers are
-        going to be preserved from one day to the next.
-        (The final slash is optional.)
-    """
-
-    node, stream = findnode(exptroot, expt, rec, stream, node)
-    oebin = loadoebin(exptroot, expt, rec, node)
-    if type(stream) != str:
-        return oebin[section][stream]
-    stream = stream.split('/')[0]
-    for n in range(len(oebin[section])):
-        folder = oebin[section][n]['folder_name'].split('/')
-        if folder[0].lower() == stream.lower():
-            if section != 'events' or ttl is None or folder[1].lower() == ttl.lower():
-                return oebin[section][n]
-    raise ValueError(f'Could not find {section} stream "{stream}" ttl {ttl}')
-
-
-def recordingpath(exptroot, expt, rec, stream, node):
-    node, stream = findnode(exptroot, expt, rec, stream, node)
-    fldr = f'{exptroot}/{node}/experiment{expt}/recording{rec}'
-    return fldr
-
-
-def contfilename(exptroot, expt=1, rec=1, stream=0, infix='continuous', node=None):
-    """
-    CONTFILENAME - Return the filename of the continuous data for a given recording.
-
-    Parameters
-    ----------
-    exptroot : string
-        Path to the folder of the general experiment.
-    expt : integer, default is 1
-        The subexperiment number.
-    rec : integer, default is 1
-        The recording number.
-    stream : integer or string, default is 0
-        The continuous data source we are getting the filename for.
-
-    Returns
-    -------
-    A tuple (ifn, tsfn, info) comprising:
-    ifn : string
-        Full filename of the continuous.dat file.
-    tsfn : numpy.ndarray
-        Timestamps for the slected recording in the selected subexperiment.
-    info : string
-        The corresponding "continfo" section of the oebin file.
-
-    Notes
-    -----
-    Optional argument STREAM specifies which continuous data to load. Default is
-        index 0. Alternatively, STREAM may be a string, specifying the
-        subdirectory, e.g., "Neuropix-PXI-126.1/". This method is preferred,
-        because it is more robust. Who knows whether those stream numbers are
-        going to be preserved from one day to the next.
-        (The final slash is optional.)
-    """
-
-    node, stream = findnode(exptroot, expt, rec, stream, node)
-    fldr = recordingpath(exptroot, expt, rec, stream, node)
-    continfo = streaminfo(exptroot, expt, rec, 'continuous', stream, node=node)
-    subfldr = continfo['folder_name']
-    if subfldr.endswith('/'):
-        subfldr = subfldr[:-1]
-    ifn = f'{fldr}/continuous/{subfldr}/{infix}.dat'
-    for fn in ['sample_numbers', 'timestamps']:
-        tsfn = f'{fldr}/continuous/{subfldr}/{fn}.npy'
-        if os.path.exists(tsfn):
-            break
-    if not os.path.exists(tsfn):
-        raise Exception("No time stamps")
-    return ifn, tsfn, continfo
-
-
-def _continuousmetadata(tsfn, continfo):
-    tms = np.load(tsfn, mmap_mode='r')
-    s0 = tms[0]
-    chlist = continfo['channels']
-    f_Hz = continfo['sample_rate']
-    return s0, f_Hz, chlist
-
-
-def _doloadcontinuous(contfn, tsfn, continfo):
-    """
-    _DOLOADCONTINUOUS - Load continuous data from a file.
-    dat, s0, f_Hz, chinfo = DOLOADCONTINOUS(contfn, tsfn, continfo)
-    performs the loading portion of the LOADCONTINUOUS function.
-    """
-
-    mm = np.memmap(contfn, dtype=np.int16, mode='r')  # in Windows os "mode=c" do not work
-    C = continfo['num_channels']
-    N = len(mm) // C
-    dat = np.reshape(mm, [N, C])
-    del mm
-    s0, f_Hz, chlist = _continuousmetadata(tsfn, continfo)
-    return (dat, s0, f_Hz, chlist)
-
-
-def continuousmetadata(exptroot, expt=1, rec=1, stream=0, infix='continuous', contfn=None, node=None):
-    '''Like LOADCONTINUOUS, except it doesn't load data.
-    Return is (s0, f_Hz, chlist). '''
-    ourcontfn, tsfn, continfo = contfilename(exptroot, expt, rec, stream, infix, node)
-    return _continuousmetadata(tsfn, continfo)
-
-
-def loadcontinuous(exptroot, expt=1, rec=1, stream=0, infix='continuous', contfn=None, node=None):
-    """
-    LOADCONTINUOUS - Load continuous data from selected data source in an
-    Open Ephys experiment.
-
-    Parameters
-    ----------
-    exptroot : string
-        Path to the folder of the general experiment.
-    expt : integer, default is 1
-        The subexperiment number.
-    rec : integer, default is 1
-        The recording number.
-    stream : integer or string, default is 0
-        The continuous data source we are getting the filename for.
-    contfn : null or string, default is None
-
-    Returns
-    -------
-        Returns the outputs of _doloadcontinuous, i.e.
-    dat : numpy.ndarray
-        Data for the selected experiment and recording.
-    s0 : numeric
-        Sample number relative to the start of the experiment of the start of
-        this recording.
-    f_Hz : integer
-        The sampling rate (in Hz) of the data set.
-    chlist : list
-        Channel information dicts, straight from the oebin file.
-
-    Notes
-    -----
-    The returned value S0 is important because event timestamps are relative
-        to the experiment rather than to a recording.
-    Optional argument STREAM specifies which continuous data to load. Default is
-        index 0. Alternatively, STREAM may be a string, specifying the
-        subdirectory, e.g., "Neuropix-PXI-126.1/". This method is preferred,
-        because it is more robust. Who knows whether those stream numbers are
-        going to be preserved from one day to the next.
-        (The final slash is optional.)
-    Optional argument CONTFN overrides the name of the continuous.dat file,
-        which is useful if you want to load the output of a preprocessed file
-        (see, e.g., applyCAR).
-    """
-
-    ourcontfn, tsfn, continfo = contfilename(exptroot, expt, rec, stream, infix, node)
-    if contfn is not None:
-        ourcontfn = contfn
-    return _doloadcontinuous(ourcontfn, tsfn, continfo)
-
-
 def _lameschmitt(dat, thr1, thr0):
     high = dat >= thr1
     high[0] = False
@@ -286,21 +69,6 @@ def _lameschmitt(dat, thr1, thr0):
     if len(iup) > len(idn):
         iup = iup[:-1]
     return np.array(iup), np.array(idn)
-
-
-def _loadanalogevents(exptroot, expt=1, rec=1, stream=0, node=None, channel=1):
-    dat, _, _, _ = loadcontinuous(exptroot, expt, rec, stream, node=node)
-    dat = dat[:, channel]
-    thr = (np.min(dat) + np.max(dat)) / 2
-    iup, idn = _lameschmitt(dat, 1.1 * thr, .9 * thr)
-
-    ss = np.stack((iup, idn), 1).flatten()
-    cc = channel + np.zeros(ss.shape, dtype=int)
-    st = np.stack((1 + 0 * iup, -1 + 0 * idn), 1).flatten()
-    return ss, cc, st
-
-
-
 
 
 def dropglitches(ss, ds0):
@@ -406,8 +174,7 @@ class Loader:
     def _oebin(self, node, expt, rec):
         _populate(self._oebins, node, expt)
         if rec not in self._oebins[node][expt]:
-            self._oebins[node][expt][rec] = loadoebin(self.root,
-                                                      expt, rec, node)
+            self._oebins[node][expt][rec] = _loadoebin(self.root, expt, rec, node)
         return self._oebins[node][expt][rec]
 
     def _oebinsection(self, expt, rec, stream, section='continuous', node=None):
@@ -761,6 +528,17 @@ class Loader:
                 self._events[node][expt][rec][stream][c] = myss
         return self._events[node][expt][rec][stream]
 
+    def _loadanalogevents(self, stream, expt=1, rec=1, node=None, channel=0):
+        dat = self.data(stream, expt, rec, node)
+        dat = dat[:, channel]
+        thr = (np.min(dat) + np.max(dat)) / 2
+        iup, idn = _lameschmitt(dat, 1.1 * thr, .9 * thr)
+
+        ss = np.stack((iup, idn), 1).flatten()
+        cc = channel + np.zeros(ss.shape, dtype=int)
+        st = np.stack((1 + 0 * iup, -1 + 0 * idn), 1).flatten()
+        return ss, cc, st
+
     def analogevents(self, stream, channel="A0", expt=1, rec=1, node=None):
         '''ANALOGEVENTS - Return virtual events from analog channel
         ss = ANALOGEVENTS(stream, channel) treats the given channel (specified
@@ -770,7 +548,7 @@ class Loader:
         node = self._autonode(stream, node)
         self.events(stream, expt, rec, node) # just to populate the dict
         if channel not in self._events[node][expt][rec][stream]:
-            ss, cc, st = _loadanalogevents(self.root, expt, rec, stream, node, int(channel[1:]))
+            ss, cc, st = self._loadanalogevents(stream, expt, rec, node, int(channel[1:]))
             N = len(ss)
             self._events[node][expt][rec][stream][channel] = np.reshape(ss, (N // 2, 2))
         return self._events[node][expt][rec][stream]
