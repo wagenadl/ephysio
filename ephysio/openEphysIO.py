@@ -21,7 +21,6 @@ def _loadoebin(exptroot, expt=1, rec=1, node=None):
     channel information, channel metadata and event metadata descriptions.
     Contains a field for each of the recorded elements detailing their folder
     names, samplerate, channel count and other needed information.
-
     Parameters
     ----------
     exptroot : string
@@ -31,7 +30,6 @@ def _loadoebin(exptroot, expt=1, rec=1, node=None):
     rec : integer, default is 1
         The recording number.
     node: None or a recording node number.
-
     Returns
     -------
     oebin : dictionary
@@ -72,10 +70,12 @@ def _lameschmitt(dat, thr1, thr0):
 
 
 def dropglitches(ss, ds0):
-    '''DROPGLITCHES - Drop glitches from event streams
+    '''
+    DROPGLITCHES - Drop glitches from event streams
     ss = DROPGLITCHES(ss, ds0), where SS is an Nx2 array of on and off times of events,
     hunts for glitches (events or interevent times shorter than DS0) and removes them.
-    The result is an N'x2 array, where N' is less than N by the number of removed glitches.'''
+    The result is an N'x2 array, where N' is less than N by the number of removed glitches.
+    '''
     ss = ss.flatten()
     glitch = np.nonzero(np.diff(ss) < ds0)[0]
     # 0 5   20 25    26 27   50 55    => 0 5    20 25    50 55
@@ -90,7 +90,6 @@ def dropglitches(ss, ds0):
         ss = np.delete(ss, [glitch[0], glitch[0] + 1])
         glitch = np.nonzero(np.diff(ss) < ds0)[0]
     return np.reshape(ss, [len(ss) // 2, 2])
-
 
 
 def _populate(dct, *args):
@@ -120,7 +119,6 @@ def _quickglob(pattern):
     return [p.split("/")[idx] for p in paths]
 
 
-
 def _deglitch(ss, thresh):
     ss = ss.flatten()
     while True:
@@ -135,7 +133,8 @@ def _deglitch(ss, thresh):
 
 
 class Loader:
-    '''OpenEphys organizes a recording session into "experiments" which
+    '''
+    OpenEphys organizes a recording session into "experiments" which
     contain "recordings" which contain "streams" of continuous data
     with associated "events". In recent versions, the hierarchy on disk
     also keeps track of the recording "node" that saved each stream.
@@ -143,14 +142,13 @@ class Loader:
     '''
 
     def __init__(self, root, cntlbarcodes=None):
-        '''Loader(root) constructs a loader for OpenEphys data.
-
+        '''
+        Loader(root) constructs a loader for OpenEphys data.
         Parameters
         ----------
         root : location of data in the file system
         cntlbarcodes: Whether to expect CNTL-style bar codes. (The alternative
             is OpenEphys-style bar codes.) Set to None to autodetect.
-
         Notes
         -----
         root must be specified with forward slashes, even on Windows.
@@ -193,9 +191,11 @@ class Loader:
             return node
 
     def streams(self):
-        '''STREAMS - List of all streams
+        '''
+        STREAMS - List of all streams
         STREAMS() returns a list of all stream names, spike, LFP, or
-        otherwise.'''
+        otherwise.
+        '''
         if self._streams is None:
             sss = []
             for ss in self.nodemap().values():
@@ -206,9 +206,11 @@ class Loader:
         return self._streams
 
     def spikestreams(self):
-        '''SPIKESTREAMS - List of all spike streams
+        '''
+        SPIKESTREAMS - List of all spike streams
         SPIKESTREAMS() returns a list of all spike streams, i.e., those
-        streams that are not NIDAQ streams or obviously LFP streams.'''
+        streams that are not NIDAQ streams or obviously LFP streams.
+        '''
         nidaqs = set(self.nidaqstreams())
         ss = []
         for node, streams in self.nodemap().items():
@@ -226,20 +228,24 @@ class Loader:
         return ss
 
     def spikestream(self, n=0):
-        '''SPIKESTREAM - Name of a spike stream
+        '''
+        SPIKESTREAM - Name of a spike stream
         SPIKESTREAM() returns the name of the first spike stream, if any. 
         SPIKESTREAM(n) returns the name of the n-th spike stream (counting 
         from 0).
-        Raises exception if the given stream does not exist.'''
+        Raises exception if the given stream does not exist.
+        '''
         ss = self.spikestreams()
         if len(ss)<=n:
             raise ValueError("Nonexistent spikestream")
         return ss[n]
 
     def lfpstreams(self):
-        '''LFPSTREAMS - List of all LFP streams
+        '''
+        LFPSTREAMS - List of all LFP streams
         LFPSTREAMS() returns a list of all LFP streams, i.e., those
-        streams that are not NIDAQ streams or obviously spike streams.'''
+        streams that are not NIDAQ streams or obviously spike streams.
+        '''
         nidaqs = set(self.nidaqstreams())
         ss = []
         for node, streams in self.nodemap().items():
@@ -257,35 +263,43 @@ class Loader:
         return ss
 
     def lfpstream(self, n=0):
-        '''LFPSTREAM - Name of an LFP stream
+        '''
+        LFPSTREAM - Name of an LFP stream
         LFPSTREAM() returns the name of the first LFP stream, if any. 
         LFPSTREAM(n) returns the name of the n-th LFP stream (counting 
         from 0).
-        Raises exception if the given stream does not exist.'''
+        Raises exception if the given stream does not exist.
+        '''
         ss = self.lfpstreams()
         if len(ss)<=n:
             raise ValueError("Nonexistent LFP stream")
         return ss[n]
 
     def nidaqstreams(self):
-        '''NIDAQSTREAMS - List of all NIDAQ streams
-        NIDAQSTREAMS() returns a list of all NIDAQ streams.'''
+        '''
+        NIDAQSTREAMS - List of all NIDAQ streams
+        NIDAQSTREAMS() returns a list of all NIDAQ streams.
+        '''
         return [s for s in self.streams() if s.startswith("NI-DAQ")]
 
     def nidaqstream(self, n=0):
-        '''NIDAQSTREAM - Name of NIDAQ stream
+        '''
+        NIDAQSTREAM - Name of NIDAQ stream
         NIDAQSTREAM() returns the name of the first NIDAQ stream.
         NIDAQSTREAM(n) returns the name of the n-th LFP stream (counting
         from 0). 
-        Raises exception if the given stream does not exist.'''
+        Raises exception if the given stream does not exist.
+        '''
         nidaqs = self.nidaqstreams()
         if len(nidaqs) <= n:
             raise ValueError("Nonexistent NIDAQ stream")
         return nidaqs[n]
 
     def experiments(self):
-        '''EXPERIMENTS - List of "experiments"
-        EXPERIMENTS() returns a list of all experiments in the session.'''
+        '''
+        EXPERIMENTS - List of "experiments"
+        EXPERIMENTS() returns a list of all experiments in the session.
+        '''
         if self._expts is None:
             node = self.nodes()[0]
             fldr = self.root
@@ -297,10 +311,12 @@ class Loader:
         return self._expts
 
     def recordings(self, expt):
-        '''RECORDINGS - List of "recordings"
+        '''
+        RECORDINGS - List of "recordings"
         RECORDINGS(expt) returns a list of all recordings in the given
         "experiment" (which must be one of the items in the list returned
-        by EXPERIMENTS()).'''
+        by EXPERIMENTS()).
+        '''
         if expt not in self._recs:
             node = self.nodes()[0]
             fldr = self.root
@@ -312,9 +328,11 @@ class Loader:
         return self._recs[expt]
 
     def nodes(self):
-        '''NODES - List of recording nodes
+        '''
+        NODES - List of recording nodes
         NODES() returns a simple list of recording nodes, or [None] for
-        older versions of OpenEphys that did not keep track.'''
+        older versions of OpenEphys that did not keep track.
+        '''
         return list(self.nodemap().keys())
 
     def _firstexpt(self, node):
@@ -351,9 +369,11 @@ class Loader:
         return fldr
 
     def contfolder(self, stream, expt=1, rec=1, node=None):
-        '''CONTFOLDER - Folder name where continuous data is stored
+        '''
+        CONTFOLDER - Folder name where continuous data is stored
         p = CONTFOLDER(stream) returns the full path of the "continuous" folder for the given stream.
-        Optional expt, rec, and node further specify.'''
+        Optional expt, rec, and node further specify.
+        '''
         node = self._autonode(stream, node)
         return self._recfolder(node, expt, rec) + f"/continuous/{stream}"
 
@@ -385,9 +405,11 @@ class Loader:
         raise Exception(f"No sample stamp file found for {stream} {expt}:{rec}")
 
     def nodemap(self):
-        '''NODEMAP - Map of stream names per node
+        '''
+        NODEMAP - Map of stream names per node
         NODEMAP() returns a dict mapping node names to lists of the streams
-        contained in each node.'''
+        contained in each node.
+        '''
 
         def explorenodes(node, timestamps_optional=False):
             pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
@@ -401,7 +423,6 @@ class Loader:
                 streams = list(set(streams))
                 streams.sort()
             return streams
-
         if self._nodemap is None:
             nodes = _quickglob(f"{self.root}/*")
             nodemap = {}
@@ -425,20 +446,24 @@ class Loader:
         return self._nodemap
 
     def streammap(self):
-        '''STREAMMAP - Map of stream names to recording nodes
+        '''
+        STREAMMAP - Map of stream names to recording nodes
         STREAMMAP() returns a dict mapping stream names to lists of
-        recording names that contain that stream.'''
+        recording names that contain that stream.
+        '''
         if self._streammap is None:
             self.nodemap()
         return self._streammap
 
     def samplingrate(self, stream, expt=None, rec=None, node=None):
-        '''SAMPLINGRATE - Sampling rate of a stream
+        '''
+        SAMPLINGRATE - Sampling rate of a stream
         SIMPLINGRATE(stream), where STREAM is one of the items returned
         by STREAMS() or its friends, returns the sampling rate of that
         stream in Hertz. Optional experiments EXPT and REC specify the
         "experiment" and "recording", but those can usually be left out,
-        as the sampling rate is generally consistent for a whole session.'''
+        as the sampling rate is generally consistent for a whole session.
+        '''
         node = self._autonode(stream, node)
         if expt is None:
             expt = self._firstexpt(node)
@@ -451,13 +476,15 @@ class Loader:
         return self._sfreqs[node][expt][rec][stream]
 
     def data(self, stream, expt=1, rec=1, node=None, stage='continuous'):
-        '''DATA - Data for a stream
+        '''
+        DATA - Data for a stream
         DATA(stream) returns the data for the first recording from the
         given stream as a TxC array. Optional arguments EXPT, REC, and
         NODE further specify.
         By default, the file "continuous.dat" is loaded. Use optional
         argument STAGE to specify an alternative. (E.g., stage='salpa'
-        for "salpa.dat".)'''
+        for "salpa.dat".)
+        '''
         contfn = self.contfolder(stream, expt, rec, node)
         contfn += f"/{stage}.dat"
         mm = np.memmap(contfn, dtype=np.int16, mode='r')
@@ -467,24 +494,29 @@ class Loader:
         return np.reshape(mm, [T, C])
 
     def bitvolts(self, stream, expt=1, rec=1, node=None):
-        '''BITVOLTS - Scale factor for all the channels for a data stream
+        '''
+        BITVOLTS - Scale factor for all the channels for a data stream
         BITVOLTS(stream) returns the scale factors to convert DATA from
         binary scale to volts as a C-length array. Optional arguments EXPT, REC, and
-        NODE further specify.'''
+        NODE further specify.
+        '''
         info = self._oebinsection(expt, rec, stream=stream, node=node)
         return [ch['bit_volts'] for ch in info['channels']]
 
     def channellist(self, stream, expt=1, rec=1, node=None):
-        '''CHANNELLIST - List of channels for a stream
+        '''
+        CHANNELLIST - List of channels for a stream
         CHANNELLIST(stream) returns the list of channels for that stream.
         Each entry in the list is a dict with channel name and other
         information straight from the OEBIN file.
-        Optional arguments EXPT, REC, and NODE further specify.'''
+        Optional arguments EXPT, REC, and NODE further specify.
+        '''
         info = self._oebinsection(expt, rec, stream=stream, node=node)
         return info['channels']
 
     def events(self, stream, expt=1, rec=1, node=None):
-        '''EVENTS - Events for a stream
+        '''
+        EVENTS - Events for a stream
         EVENTS(stream) returns the events associated with the given
         stream as a dict of event channel numbers (typically counted 1
         to 8) to Nx2 arrays of on and off sample times, measured from
@@ -492,9 +524,9 @@ class Loader:
         directly as indices into the corresponding DATA().
         Ab initio, only conventional digital events are returned, but
         after you call ANALOGEVENTS() on the stream, those are included
-        in the dict returned by EVENTS as well.'''
+        in the dict returned by EVENTS as well.
+        '''
         node = self._autonode(stream, node)
-        
         _populate(self._events, node, expt, rec)
         _populate(self._ss0, node, expt, rec)
         if stream not in self._events[node][expt][rec]:
@@ -540,7 +572,8 @@ class Loader:
         return ss, cc, st
 
     def analogevents(self, stream, channel="A0", expt=1, rec=1, node=None):
-        '''ANALOGEVENTS - Return virtual events from analog channel
+        '''
+        ANALOGEVENTS - Return virtual events from analog channel
         ss = ANALOGEVENTS(stream, channel) treats the given channel (specified
         in string form, e.g., "A0", or "A1", etc.) as if it were a digital
         channel and returns an Nx2 array of on/off event time stamps.
@@ -554,7 +587,8 @@ class Loader:
         return self._events[node][expt][rec][stream]
 
     def barcodes(self, stream, expt=1, rec=1, node=None, channel=1):
-        '''BARCODES - Extract bar codes from a given stream
+        '''
+        BARCODES - Extract bar codes from a given stream
         barcodes = BARCODES(stream) returns the time stamps and codes of the
         bar codes associated with the given stream. Optional arguments EXPT, REC,
         NODE further specify.
@@ -577,13 +611,13 @@ class Loader:
                 self._barcodes[node][expt][rec][stream] = timeMachine.CNTLBarCodes(ss, fs)
             else:
                 self._barcodes[node][expt][rec][stream] = timeMachine.OpenEphysBarCodes(ss, fs)
-
         return self._barcodes[node][expt][rec][stream]
 
     def shifttime(self, times, sourcestream, deststream, expt=1, rec=1,
                   sourcenode=None, destnode=None,
                   sourcebarcode=1, destbarcode=1):
-        '''SHIFTTIME - Translate event time stamps to other stream
+        '''
+        SHIFTTIME - Translate event time stamps to other stream
         SHIFTTIME(times, source, dest) translates event time stamps
         defined relative to the SOURCE stream for use as indices in
         the DEST stream. Operates on the first experiment/recording
@@ -592,8 +626,8 @@ class Loader:
         event channels of both streams.
         SOURCEBARCODE and DESTBARCODE specify bar code channels.
         Analog channels are supported; see BARCODES.
-
-        Perhaps this function should be called TRANSLATEEVENTTIME.'''
+        Perhaps this function should be called TRANSLATEEVENTTIME.
+        '''
 
         bc_source = self.barcodes(sourcestream, expt, rec,
                                  sourcenode, sourcebarcode)
@@ -606,7 +640,8 @@ class Loader:
                       expt=1, rec=1,
                       sourcenode=None, destnode=None,
                       sourcebarcode=1, destbarcode=1):
-        '''TRANSLATEDATA - Translate a chunk of data from one timezone to another.
+        '''
+        TRANSLATEDATA - Translate a chunk of data from one timezone to another.
         datad, t0d = TRANSLATEDATA(data, t0, source, dest) takes a chunk of data (vector of
         arbitrary length N) that lives in the timezone of the SOURCE stream with time stamps
         T0 up to T1 = T0+N, and reinterpolates it to the timezone of the DEST stream. The
@@ -626,14 +661,16 @@ class Loader:
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
                     nidaqstream=None, nidaqbarcode=1, destbarcode=1,
                     glitch_ms=None):
-        '''NIDAQEVENTS - NIDAQ events translated to given stream
+        '''
+        NIDAQEVENTS - NIDAQ events translated to given stream
         NIDAQEVENTS is a convenience function that first calls EVENTS
         on the NIDAQ stream, then SHIFTTIME to convert those events
         to the time base of the given STREAM.
         NIDAQBARCODE and DESTBARCODE are the digital (or analog)
         channel that contain bar codes.
         Optional argument GLITCH_MS specifies that glitches shorter than
-        the given duration should be removed.'''
+        the given duration should be removed.
+        '''
         if nidaqstream is None:
             nidaqstream = self.nidaqstream()
         events = self.events(nidaqstream, expt, rec)
@@ -652,10 +689,10 @@ class Loader:
         return nevents
 
     def inferblocks(self, ss, stream, split_s=5.0, dropshort_ms=None, minblocklen=None):
-        '''INFERBLOCKS - Infer blocks in lists of sample time stamps
+        '''
+        INFERBLOCKS - Infer blocks in lists of sample time stamps
         sss = INFERBLOCKS(ss, stream) splits events into inferred blocks based
         on lengthy pauses.
-
         Parameters
         ----------
         ss : numpy.ndarray
@@ -664,12 +701,10 @@ class Loader:
         t_split_s : threshold for splitting events, default is 5.0 seconds
         dropshort_ms: events that happen less than given time after previous are dropped
         minblocklen: if given, blocks with fewer events than this are dropped
-
         Returns
         -------
         ss_block : list
             List of numpy arrays samplestamps, one per block.
         '''
-
         fs = self.samplingrate(stream)
         return timeMachine.inferblocks(ss, fs, split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
