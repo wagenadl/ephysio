@@ -131,7 +131,6 @@ class Loader:
         cntlbarcodes: Whether to expect CNTL-style bar codes. (The alternative
             is OpenEphys-style bar codes.) Set to None to autodetect.
         '''
-
         self.root = root
         self.dtng = root.split("/")[-1]
         self._streams = None
@@ -139,23 +138,11 @@ class Loader:
         self._streammap = None  # stream -> node
         self._sfreqs = {}   # node->expt->rec->stream->Hertz
         self._metas = {}    # stream->expt->rec->metainfo
-
         self._events = {}   # node->expt->rec->stream->digitalchannel->Nx2
         self._ss0 = {}  # node->expt->rec->stream
         if not os.path.exists(root):
             raise ValueError(f"No data at {root}")
 
-    # def _metafilename(self, stream, expt, rec, node):
-    #     '''METAFILENAME - Return the full pathname of a .meta file
-    #     fn = METAFILENAME(exptroot, expt, rec, stream) ...
-    #     '''
-    #     simplefn = f"{self.root}/{self.dtng}_t{rec}.{node}.meta"
-    #     if os.path.exists(simplefn):
-    #         return simplefn
-    #     deepfn = f"{self.root}/{self.dtng}_{node}/{self.dtng}_t{rec}.{stream}.meta"
-    #     if os.path.exists(deepfn):
-    #         return deepfn
-    #     raise ValueError(f"No meta file for {node} {expt} {rec} {stream}")
     def _metafilename(self, stream, expt, rec, node):
         '''
         METAFILENAME - Return the full pathname of a .meta file
@@ -424,7 +411,6 @@ class Loader:
         else:
             raise Exception(f"Unknown stream type: {info['typeThis']}")
 
-
     def data(self, stream, expt=0, rec=0, node=None, stage='continuous'):
         dat = self._alldata(stream, expt, rec, node, stage)
         C = self.channelcounts(stream, expt, rec, node)[0]
@@ -441,7 +427,7 @@ class Loader:
         if os.path.exists(fn) and not reconstruct:
             ttvv = np.load(fn)
             tt = ttvv[:,0]
-            vv = ttvv[:,1:]
+            vv = ttvv[:,1]
         else:
             digi = self.digidata(stream, expt, rec, node)
             print(digi.shape)
