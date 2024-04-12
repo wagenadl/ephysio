@@ -503,16 +503,22 @@ class Loader:
         info = self._oebinsection(expt, rec, stream=stream, node=node)
         return [ch['bit_volts'] for ch in info['channels']]
 
-    def channellist(self, stream, expt=1, rec=1, node=None):
+    def channellist(self, stream, expt=1, rec=1, node=None, prefix=None):
         '''
         CHANNELLIST - List of channels for a stream
         CHANNELLIST(stream) returns the list of channels for that stream.
         Each entry in the list is a dict with channel name and other
         information straight from the OEBIN file.
         Optional arguments EXPT, REC, and NODE further specify.
+        Optional argument PREFIX specifies that only channels with names
+        starting with the given PREFIX are returned
         '''
         info = self._oebinsection(expt, rec, stream=stream, node=node)
-        return info['channels']
+        if prefix is None:
+            return info['channels']
+        else:
+            return [ch for ch in info['channels'] if ch['channel_name'].startswith(prefix)]
+
 
     def events(self, stream, expt=1, rec=1, node=None):
         '''
