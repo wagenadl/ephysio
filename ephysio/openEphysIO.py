@@ -713,4 +713,4 @@ class Loader:
             List of numpy arrays samplestamps, one per block.
         '''
         fs = self.samplingrate(stream)
-        return timeMachine.inferblocks(ss, fs, split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
+        return timeMachine.inferblocks(ss, fs, t_split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
