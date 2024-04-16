@@ -4,7 +4,7 @@ import numpy as np
 import ast
 import os
 import glob
-#import daw.ppersist
+
 
 def _nodetostr(node):
     if type(node) == str:
@@ -666,24 +666,6 @@ def matchbarcodes(ss1, bb1, ss2, bb2):
     return (sss1, sss2)
 
 
-def aligntimestamps(ss_event_nidaq, ss_ni, ss_np):
-    '''
-    GETBARCODES -
-    Parameters
-    ----------
-
-    Returns
-    -------
-
-    Notes
-    -----
-
-    '''
-
-    ss_event_neuropix = np.interp(ss_event_nidaq, ss_ni, ss_np)
-    # return ss_event_neuropix
-
-
 def loadtranslatedevents(exptroot, expt=1, rec=1,
                          sourcestream='NI-DAQmx-142.0',
                          targetstream='Neuropix-PXI-126.0',
@@ -761,41 +743,6 @@ def dropglitches(ss, ds0):
         glitch = np.nonzero(np.diff(ss) < ds0)[0]
     return np.reshape(ss, [len(ss) // 2, 2])
 
-
-class EventTranslator:
-    '''EventTranslator transforms timestamps from one stream (e.g., a probe)
-    to another stream (either another probe or the NIDAQ.'''
-
-    def __init__(self, exptroot, expt=1, rec=1,
-                 sourcestream='NI-DAQmx-142.0',
-                 sourcettl=None,
-                 targetstream='Neuropix-PXI-126.0',
-                 targetttl=None,
-                 sourcenode=None,
-                 targetnode=None,
-                 sourcebarcodechannel=1):
-
-        (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=sourcestream, node=sourcenode)
-        if type(sourcebarcodechannel) == str and sourcebarcodechannel.startswith("A"):
-            sourcebarcodechannel = int(sourcebarcodechannel[1:])
-            ss_trl, bnc_cc, bnc_states = loadanalogevents(exptroot, expt=expt, rec=rec, stream=sourcestream,
-                                                          node=sourcenode, channel=sourcebarcodechannel)
-            fw = bnc_states
-        else:
-            ss_trl, bnc_cc, bnc_states, fw = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=sourcestream,
-                                                        ttl=sourcettl, node=sourcenode)
-        t_ni, bc_ni = getbarcodes(ss_trl, bnc_cc, bnc_states, f_Hz, channel=sourcebarcodechannel)
-
-        (s0, f_Hz, chlist) = continuousmetadata(exptroot, expt, rec, stream=targetstream, node=targetnode)
-        (ss1, cc1, vv1, fw1) = loadevents(exptroot, s0=s0, expt=expt, rec=rec, stream=targetstream, ttl=targetttl,
-                                          node=targetnode)
-        t_np, bc_np = getbarcodes(ss1, cc1, vv1, f_Hz)
-
-        self.ss_ni, self.ss_np = matchbarcodes(t_ni, bc_ni, t_np, bc_np)
-
-    def translate(self, ss):
-        '''Translates timestamps from the SOURCESTREAM to the TARGETSTREAM'''
-        return np.interp(ss, self.ss_ni, self.ss_np)
 
 
 # %%
@@ -947,14 +894,18 @@ class Loader:
     This class allows easy access to all of this information.
     '''
 
-    def __init__(self, root, cntlbarcodes=True):
+    def __init__(self, root, cntlbarcodes=None):
         '''Loader(root) constructs a loader for OpenEphys data.
 
         Parameters
         ----------
         root : location of data in the file system
         cntlbarcodes: Whether to expect CNTL-style bar codes. (The alternative
-            is OpenEphys-style bar codes.)
+            is OpenEphys-style bar codes.) Set to None to autodetect.
+
+        Notes
+        -----
+        root must be specified with forward slashes, even on Windows.
         '''
 
         self.root = root
@@ -1191,14 +1142,18 @@ class Loader:
         NODEMAP() returns a dict mapping node names to lists of the streams
         contained in each node.'''
 
-        def explorenodes(node):
+        def explorenodes(node, timestamps_optional=False):
             pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
             streams = _quickglob(pattern)
-            pattern = self._recfolder(node, None, None) + "/continuous/*/"
-            allstreams = _quickglob(pattern)
-            for s in allstreams:
-                if s not in streams:
-                    print(f"Caution! Stream {s} does not have timestamps.npy file and will be ignored.")            
+            if timestamps_optional:
+                # Tolerate lack of timestamps.npy files
+                # This can be OK if you only want to read continuous data.
+                # It does not work if you need to access events.
+                pattern = self._recfolder(node, None, None) + "/continuous/*/continuous.dat"
+                streams += _quickglob(pattern)
+                streams = list(set(streams))
+                streams.sort()
+
             return streams
 
         if self._nodemap is None:
@@ -1364,10 +1319,15 @@ class Loader:
             uds = [np.stack((np.ones(son.shape),
                              -np.ones(son.shape)), 1).flatten()
                    for son in sss_on]
+
+            if self.cntlbarcodes is None:
+                self.cntlbarcodes = _probablycntlbarcodes(sss, uds, fs)
             if self.cntlbarcodes:
                 tt, vv = _cntlbarcodes(sss, uds)
             else:
                 tt, vv = _openephysbarcodes(sss, uds, fs)
+            if len(tt) < 5:
+                raise Exception("Not enough bar codes - Did you specify the right kind in the Loader constructor?")
             self._barcodes[node][expt][rec][stream] = (tt, vv)
         return self._barcodes[node][expt][rec][stream]
 
@@ -1400,15 +1360,15 @@ class Loader:
         # Extrapolate times before the first barcode and after the last
         isbefore = np.nonzero(times < ss1[0])[0]
         if len(isbefore):
-            print(f"Caution: Extrapolation {len(isbefore)} event(s) before start of bar codes")
+            print(f"Caution: Extrapolating {len(isbefore)} event(s) before start of bar codes")
             a_before, b_before = np.polyfit(ss1[:2], ss2[:2], 1)
-            result[isbefore] = a_before * result[isbefore] + b_before
+            result[isbefore] = a_before * times[isbefore] + b_before
 
         isafter = np.nonzero(times > ss1[-1])[0]
         if len(isafter):
-            print(f"Caution: Extrapolation {len(isafter)} event(s) after end of bar codes")
+            print(f"Caution: Extrapolating {len(isafter)} event(s) after end of bar codes")
             a_after, b_after = np.polyfit(ss1[-2:], ss2[-2:], 1)
-            result[isafter] = a_after * result[isafter] + b_after
+            result[isafter] = a_after * times[isafter] + b_after
 
         return result
 
