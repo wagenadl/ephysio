@@ -54,10 +54,14 @@ class SpikeStats:
         the shortest interval between stimuli. In particular, we are not smart enough to return a
         spike twice in that case, once for each stimulus for which the interval encompasses the spike.'''
 
+        if len(self.stim_s)==0:
+            return np.zeros(0), np.zeros(0, int)
         t_spk_s = self.spks_s[celid]
-        tri = np.searchsorted(self.stim_s + dt_start_ms / 1e3,
-                              t_spk_s)  # this returns tri before which given spk should be inserted in list
-        tri[tri > 0] -= 1
+        if len(t_spk_s)==0:
+            return np.zeros(0), np.zeros(0, int)
+        tri = np.searchsorted(self.stim_s + dt_start_ms / 1e3, t_spk_s)
+        # this returns the tri before which given spk should be inserted in list
+        tri[tri > 0] -= 1 # trial after, except for before first
         lat_ms = 1e3 * (t_spk_s - self.stim_s[tri])
         keep = np.logical_and(lat_ms >= dt_start_ms, lat_ms < dt_end_ms)
         return lat_ms[keep], tri[keep]
@@ -87,12 +91,21 @@ class SpikeStats:
 
         lat, tri = self.latencies(celid, dt_start_ms=dt_start_ms, dt_end_ms=dt_end_ms)
         bin_ms = np.arange(dt_start_ms, dt_end_ms + .0001, binsize_ms)
+
+        if len(self.stim_s)==0:
+            bin_ms = (bin_ms[:-1] + bin_ms[1:]) / 2
+            if pertrial:
+                return np.zeros((len(bin_ms), 0), dtype=int), bin_ms
+            else:
+                return np.zeros(len(bin_ms), dtype=int), bin_ms
+        
         if pertrial:
             bin_tri = np.arange(len(self.stim_s) + 1) # hist returns n-1 columns
             cnts, _, _ = np.histogram2d(lat, tri, (bin_ms, bin_tri))
         else:
             cnts, _ = np.histogram(lat, bin_ms)
         return cnts.astype(int), (bin_ms[:-1] + bin_ms[1:]) / 2
+
 
     def ntrials(self):
         '''NTRIALS - Total number of trials
