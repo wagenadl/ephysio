@@ -422,6 +422,7 @@ class Loader:
                 streams += _quickglob(pattern)
                 streams = list(set(streams))
                 streams.sort()
+
             return streams
         if self._nodemap is None:
             nodes = _quickglob(f"{self.root}/*")
