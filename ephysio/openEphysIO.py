@@ -691,7 +691,8 @@ class Loader:
                 nevents[ch] = self.shifttime(evts, nidaqstream, stream,
                                              expt, rec,
                                              sourcebarcode=nidaqbarcode,
-                                             destbarcode=destbarcode).astype(int)
+                                             destbarcode=destbarcode,
+                                             destnode=node).astype(int)
         return nevents
 
     def inferblocks(self, ss, stream, split_s=5.0, dropshort_ms=None, minblocklen=None):
