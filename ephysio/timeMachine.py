@@ -181,7 +181,7 @@ class CNTLBarCodes(BarCodes):
     @staticmethod
     def probablyCNTL(ss, fs_Hz):
         # Guess whether ss represent CNTL-style bar codes as opposed to OpenEphys style
-        sss = inferblocks(ss, fs_Hz, t_split_s=1.0)
+        sss = inferblocks(ss, fs_Hz, t_split_s=.10)
         balance = 0
         for ss in sss:
             if len(ss) > 4:
