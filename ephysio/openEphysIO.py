@@ -5,7 +5,7 @@ import ast
 import os
 import glob
 
-import timeMachine
+from . import timeMachine
 
 
 def _nodetostr(node):
