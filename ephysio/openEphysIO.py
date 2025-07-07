@@ -422,7 +422,6 @@ class Loader:
                 streams += _quickglob(pattern)
                 streams = list(set(streams))
                 streams.sort()
-
             return streams
         if self._nodemap is None:
             nodes = _quickglob(f"{self.root}/*")
@@ -432,10 +431,11 @@ class Loader:
                 nodemap[None] = explorenodes(None)
             else:
                 for node in nodes:
-                    if os.path.exists(f"{self.root}/{node}/settings.xml"):
-                        probes = explorenodes(node)
-                        if len(probes):
-                            nodemap[node] = probes
+                    probes = explorenodes(node)
+                    if len(probes):
+                        if not os.path.exists(f"{self.root}/{node}/settings.xml"):
+                            print(f"(Reading node '{node}' even though settings.xml is missing)")
+                        nodemap[node] = probes
             streammap = {}
             for node, streams in nodemap.items():
                 for stream in streams:
