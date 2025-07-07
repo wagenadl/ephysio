@@ -63,6 +63,13 @@ class Reader:
                         self.kslabel[int(row[0])] = row[1]
             else:
                 print(f"(No cluster group labels from phy2 in {folder}; using original ks labels.)")
+            if os.path.exists(f'{folder}/spike_clusters.npy'):
+                print("Using spike clusters from phy2 to override ks unit IDs")
+                self.spk_cls = np.load(f'{folder}/spike_clusters.npy').flatten()
+            else:
+                print(f"(No spike clusters from phy2 in {folder}; using original ks unit IDs.)")
+
+
         self.cnt = None
 
         self.elc4clust = {}
