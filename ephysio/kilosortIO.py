@@ -68,10 +68,8 @@ class Reader:
                 self.spk_cls = np.load(f'{folder}/spike_clusters.npy').flatten()
             else:
                 print(f"(No spike clusters from phy2 in {folder}; using original ks unit IDs.)")
-
-
+        self._nclust = max(self.kslabel.keys()) + 1
         self.cnt = None
-
         self.elc4clust = {}
         if os.path.exists(f'{folder}/cluster_info.tsv'):
             with open(f'{folder}/cluster_info.tsv') as f:
@@ -159,7 +157,7 @@ class Reader:
 
     def nclusters(self):
         '''NCLUSTERS - Return number of clusters'''
-        return self.tmpls.shape[0]
+        return self._nclust
 
     def nchannels(self):
         '''NCHANELS - Return number of channels'''
@@ -200,6 +198,8 @@ class Reader:
         '''TEMPLATEFORCLUSTER - Return template waveform for given cluster
         Result is TxC where T is the length (in samples) of the template
         and C is number of channels.'''
+        if k >= len(self.tmpls):
+            raise ValueError(f"Expected a cluster number less than {len(self.tmpls)}")
         return self.tmpls[k,:,:]
 
     def labeledclusters(self, label='good'):
@@ -246,7 +246,7 @@ class Reader:
         K, W, E = self.tmpls.shape
         if win is None:
             win = range(W)
-        if k>=K:
+        if k >= K:
             tmplelcs = np.array([self.elc4clust[k]])
             usedw = np.array([1])
         else:
