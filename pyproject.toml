@@ -9,7 +9,7 @@ authors = [
 ]
 description = "Tools for reading ephys data"
 readme = "README.md"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
     "numpy"
 ]
