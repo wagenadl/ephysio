@@ -100,6 +100,8 @@ def _populate(dct, *args):
 
 
 def _quickglob(pattern):
+    if pattern is None:
+        return []
     # Replace "//" by "/" except at beginning or after ":"
     bits = pattern.split(":")
     nb = []
@@ -341,7 +343,7 @@ class Loader:
             fldr += f"/{node}"
         xpts = [x for x in os.listdir(fldr) if x.startswith("experiment")]
         if not xpts:
-            raise Exception("No experiments")
+            raise FileNotFoundError("No experiments")
         xpts.sort()
         return int(xpts[0][10:])
 
@@ -352,7 +354,7 @@ class Loader:
         fldr += f"/experiment{expt}"
         recs = [x for x in os.listdir(fldr) if x.startswith("recording")]
         if not recs:
-            raise Exception("No recordings")
+            raise FileNotFoundError("No recordings")
         recs.sort()
         return int(recs[0][9:])
     
@@ -412,14 +414,20 @@ class Loader:
         '''
 
         def explorenodes(node, timestamps_optional=False):
-            pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
-            streams = _quickglob(pattern)
+            try:
+                pattern = self._recfolder(node, None, None) + "/continuous/*/timestamps.npy"
+                streams = _quickglob(pattern)
+            except (FileNotFoundError, NotADirectoryError):
+                streams = []
             if timestamps_optional:
                 # Tolerate lack of timestamps.npy files
                 # This can be OK if you only want to read continuous data.
                 # It does not work if you need to access events.
-                pattern = self._recfolder(node, None, None) + "/continuous/*/continuous.dat"
-                streams += _quickglob(pattern)
+                try:
+                    pattern = self._recfolder(node, None, None) + "/continuous/*/continuous.dat"
+                    streams += _quickglob(pattern)
+                except (FileNotFoundError, NotADirectoryError):
+                    pass
                 streams = list(set(streams))
                 streams.sort()
             return streams
