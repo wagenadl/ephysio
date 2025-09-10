@@ -1,18 +1,21 @@
 import numpy as np
 
 
-def inferblocks(ss, f_Hz, t_split_s=1.0):
+def inferblocks(ss_trl, f_Hz, t_split_s=5.0, extra=None, dropshort_ms=None, minblocklen=None):
     """
     INFERBLOCKS - Split events into inferred stimulus blocks based on
     lengthy pauses.
 
     Parameters
     ----------
-    ss : numpy.ndarray
-        The samplestamps of events (in samples)
+    ss_trl : numpy.ndarray
+        The samplestamps of events (in samples) relative to the recording.
+        (obtained from LOADEVENTS or FILTEREVENTS)
     f_Hz : integer
         Frequency (in Hz) of recording sampling rate.
-    t_split_s : numeric, default is 1.0
+    t_split_s : numeric, default is 5.0
+    dropshort_ms: events that happen less than given time after previous are dropped
+    minblocklen: if given, blocks with fewer events than this are dropped
 
     Returns
     -------
@@ -20,22 +23,83 @@ def inferblocks(ss, f_Hz, t_split_s=1.0):
         List of numpy arrays samplestamps, one per block.
     Notes
     -----
-    ss_block = INFERBLOCKS(ss, f_Hz) splits the event time stamps SS into
-    blocks with cuts when adjacent events are more than 1 second apart.
-    Optional argument T_SPLIT_S overrides that threshold.
+    ss_block = INFERBLOCKS(ss_trl, f_Hz) splits the event time stamps SS_TRL (from LOADEVENTS
+    or FILTEREVENTS) into blocks with cuts when adjacent events are more than 5 seconds
+    apart. Optional argument T_SPLIT_S overrides that threshold.
     """
 
-    ds = np.diff(ss)
+    if dropshort_ms is not None:
+        dt = np.diff(ss_trl)
+        drop = np.nonzero(dt < dropshort_ms * f_Hz / 1000)[0] + 1
+        print("drop short", drop, ss_trl.shape, dropshort_ms, f_Hz)
+        ss_trl = np.delete(ss_trl, drop)
+    ds = np.diff(ss_trl)
     thresh = int(t_split_s * f_Hz)
-    ds[np.isnan(ss[1:])] = thresh + 1
-    ds[np.isnan(ss[:-1])] = thresh + 1
+    ds[np.isnan(ss_trl[1:])] = thresh + 1
+    ds[np.isnan(ss_trl[:-1])] = thresh + 1
     idx = np.nonzero(ds >= thresh)[0] + 1
-    N = len(ss)
+    N = len(ss_trl)
     idx = np.hstack((0, idx, N))
     ss_block = []
     for k in range(len(idx) - 1):
-        ss_block.append(ss[idx[k]:idx[k + 1]])
-    return ss_block
+        ss_block.append(ss_trl[idx[k]:idx[k + 1]])
+
+    if minblocklen is not None:
+        ss_block = [ss for ss in ss_block if len(ss) >= minblocklen]
+
+    if extra is None:
+        return ss_block
+
+    def blockedextra(extra):
+        ex_block = []
+        for k in range(len(idx) - 1):
+            ex_block.append(extra[idx[k]:idx[k + 1]])
+        return ex_block
+
+    if type(extra) == tuple:
+        ex_block = tuple([blockedextra(x) for x in extra])
+    else:
+        ex_block = blockedextra(extra)
+    return ss_block, ex_block
+
+
+def extractblock(dat, ss_trl, f_Hz, margin_s=10.0):
+    '''
+    EXTRACTBLOCK - Extract ephys data for a block of vis_stimuli identified by SS_TRL
+    which must be one of the items in the list returned by INFERBLOCKS.
+
+    Parameters
+    ----------
+    dat : numpy.ndarray
+        Ephys data from where we want to extract from.
+    ss_trl : numpy.ndarray
+        The samplestamps of event (in samples) relative to the recording which
+        should be one of the items in the list returned by INFERBLOCKS.
+    f_Hz : integer
+        Frequency (in Hz) of recording sampling rate.
+    margin_s : numeric, default is 10.0
+        Length of the margin (in seconds) included at the beginning and end of
+        the block (unless of course the block starts less than 10 s from the
+        beginning of the file or analogously at the end).
+
+    Returns
+    -------
+    dat[s0:s1,:] : numpy.ndarray
+        Extracted portion of ephys data.
+    ss_trl - s0 : numpy.ndarray
+        Shifted timestamps of events (relative to the extracted portion of data).
+    '''
+
+    s0 = ss_trl[0] - int(margin_s * f_Hz)
+    s1 = ss_trl[-1] + int(margin_s * f_Hz)
+    S, C = dat.shape
+    if s0 < 0:
+        s0 = 0
+    if s1 > S:
+        s1 = S
+    return dat[s0:s1, :], ss_trl - s0
+
+
 
 
 class BarCodes:
@@ -56,6 +120,9 @@ class BarCodes:
             return self._matchtrivial(other)
         else:
             return self._matchcodes(other)
+
+    def count(self):
+        return len(self.codes)
 
     def _matchtrivial(self, other):
         raise NotImplementedError("Trivial matching not implemented yet")
@@ -83,7 +150,7 @@ class KofikoBarCodes(BarCodes):
 class CNTLBarCodes(BarCodes):
     def __init__(self, ss, fs_Hz):
         super().__init__(ss, fs_Hz)
-        sss = inferblocks(ss, fs_Hz)
+        sss = inferblocks(ss, fs_Hz, t_split_s=1.0)
         self.trivial = False
         self.codes = {}
         nbar = 0
@@ -108,11 +175,13 @@ class CNTLBarCodes(BarCodes):
             elif len(ss) > 5:
                 noth += 1
         print(f"(Found {nbar} legit bar codes and {noth} other groups)")
+        if nbar < 5:
+            raise Exception("Not enough bar codes - Are you sure your experiment uses CNTL-style barcodes?")
 
     @staticmethod
     def probablyCNTL(ss, fs_Hz):
         # Guess whether ss represent CNTL-style bar codes as opposed to OpenEphys style
-        sss = inferblocks(ss, fs_Hz)
+        sss = inferblocks(ss, fs_Hz, t_split_s=.10)
         balance = 0
         for ss in sss:
             if len(ss) > 4:
@@ -126,7 +195,7 @@ class CNTLBarCodes(BarCodes):
 class OpenEphysBarCodes(BarCodes):
     def __init__(self, ss, fs_Hz):
         super().__init__(ss, fs_Hz)
-        sss = inferblocks(ss, fs_Hz)
+        sss = inferblocks(ss, fs_Hz, t_split_s=1.0)
         self.trivial = False
         self.codes = {}
 
@@ -158,6 +227,8 @@ class OpenEphysBarCodes(BarCodes):
                     bit *= 2
             self.codes[ss[0]] = value
 
+        if len(self.codes) < 5:
+            raise Exception("Not enough bar codes - Are you sure your experiment uses OpenEphys-style barcodes?")
 
 class TimeMachine:
     """
@@ -166,7 +237,7 @@ class TimeMachine:
     def __init__(self, barcodes_dest=None, barcodes_source=None):
         '''Do not call without barcodes_dest and barcodes_source.'''
         self.ssbc_dest, self.ssbc_source = barcodes_dest.match(barcodes_source)
-        if len(self.ssbc_dest) < 2:
+        if len(self.ssbc_dest) < 2 + .2 * (barcodes_source.count() + barcodes_dest.count()) / 2:
             raise ValueError("Not enough barcodes to translate")
 
     def inverse(self):
@@ -176,7 +247,7 @@ class TimeMachine:
         rev.ssbc_dest = self.ssbc_source
         return rev
 
-    def translatedata(self, t0_source, data_source):
+    def translatedata(self, data_source, t0_source):
         """
         Translate the data from the source to the destination time zone.
 

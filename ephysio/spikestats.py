@@ -21,7 +21,7 @@ class SpikeStats:
             self.stim_s = stim_s.to_numpy() # in case it's a panda series
         except:
             self.stim_s = stim_s
-        self.spks_s = spks_s
+        self.spks_s = {k: np.sort(v) for k, v in spks_s.items()}
         self.stim_idx = stim_idx
         if stim_idx is not None:
             if selector is not None:
