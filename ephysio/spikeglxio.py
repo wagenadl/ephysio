@@ -4,7 +4,7 @@ import numpy as np
 import os
 import glob
 
-from . import timeMachine
+from . import timemachine
 
 
 def _populate(dct, *args):
@@ -445,7 +445,7 @@ class Loader:
         """
         BARCODES - Extract barcodes from a given SpikeGLX stream.
         Parameters are similar to OpenEphysIO with adjustments for SpikeGLX data structure.
-        Returns a timeMachine. BarCodes object.
+        Returns a timemachine. BarCodes object.
         """
         node = self._autonode(stream, node)
         _populate(self._barcodes, node, expt, rec)
@@ -460,11 +460,11 @@ class Loader:
             ss = event_data.flatten()
             fs = self.samplingrate(stream, expt, rec, node)
             if self.cntlbarcodes is None:
-                self.cntlbarcodes = timeMachine.CNTLBarCodes.probablyCNTL(ss, fs)
+                self.cntlbarcodes = timemachine.CNTLBarCodes.probablyCNTL(ss, fs)
             if self.cntlbarcodes:
-                self._barcodes[node][expt][rec][stream] = timeMachine.CNTLBarCodes(ss, fs)
+                self._barcodes[node][expt][rec][stream] = timemachine.CNTLBarCodes(ss, fs)
             else:
-                self._barcodes[node][expt][rec][stream] = timeMachine.OpenEphysBarCodes(ss, fs)
+                self._barcodes[node][expt][rec][stream] = timemachine.OpenEphysBarCodes(ss, fs)
         return self._barcodes[node][expt][rec][stream]
 
 
@@ -488,7 +488,7 @@ class Loader:
     #                              sourcenode, sourcebarcode)
     #     bc_dest = self.barcodes(deststream, expt, rec,
     #                              destnode, destbarcode)
-    #     tm = timeMachine.TimeMachine(bc_dest, bc_source)
+    #     tm = timemachine.TimeMachine(bc_dest, bc_source)
     #     return tm.translatetimes(times)
     #
     # def translatedata(self, data, t0, sourcestream, deststream,
@@ -509,7 +509,7 @@ class Loader:
     #                               sourcenode, sourcebarcode)
     #     bc_dest = self.barcodes(deststream, expt, rec,
     #                             destnode, destbarcode)
-    #     tm = timeMachine.TimeMachine(bc_dest, bc_source)
+    #     tm = timemachine.TimeMachine(bc_dest, bc_source)
     #     return tm.translatedata(data, t0)
     #
     # def nidaqevents(self, stream, expt=1, rec=1, node=None,
@@ -561,7 +561,7 @@ class Loader:
     #     '''
     #
     #     fs = self.samplingrate(stream)
-    #     return timeMachine.inferblocks(ss, fs, split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
+    #     return timemachine.inferblocks(ss, fs, split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
 
 
 

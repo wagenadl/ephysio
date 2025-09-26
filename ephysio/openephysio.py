@@ -5,7 +5,7 @@ import ast
 import os
 import glob
 
-from . import timeMachine
+from . import timemachine
 
 
 def _nodetostr(node):
@@ -610,7 +610,7 @@ class Loader:
         Optional argument CHANNEL specifies the digital channel from which the
         bar codes are to be read. If CHANNEL is a string like "A0", the bar codes
         are read from the given analog channel.
-        The result is of the timeMachine.BarCodes.
+        The result is of the timemachine.BarCodes.
         '''
         node = self._autonode(stream, node)
         _populate(self._barcodes, node, expt, rec)
@@ -621,11 +621,11 @@ class Loader:
             fs = self.samplingrate(stream, expt, rec, node)
             ss = evts.flatten()
             if self.cntlbarcodes is None:
-                self.cntlbarcodes = timeMachine.CNTLBarCodes.probablyCNTL(ss, fs)
+                self.cntlbarcodes = timemachine.CNTLBarCodes.probablyCNTL(ss, fs)
             if self.cntlbarcodes:
-                self._barcodes[node][expt][rec][stream] = timeMachine.CNTLBarCodes(ss, fs)
+                self._barcodes[node][expt][rec][stream] = timemachine.CNTLBarCodes(ss, fs)
             else:
-                self._barcodes[node][expt][rec][stream] = timeMachine.OpenEphysBarCodes(ss, fs)
+                self._barcodes[node][expt][rec][stream] = timemachine.OpenEphysBarCodes(ss, fs)
         return self._barcodes[node][expt][rec][stream]
 
     def shifttime(self, times, sourcestream, deststream, expt=1, rec=1,
@@ -648,7 +648,7 @@ class Loader:
                                  sourcenode, sourcebarcode)
         bc_dest = self.barcodes(deststream, expt, rec,
                                  destnode, destbarcode)
-        tm = timeMachine.TimeMachine(bc_dest, bc_source)
+        tm = timemachine.TimeMachine(bc_dest, bc_source)
         return tm.translatetimes(times)
 
     def translatedata(self, data, t0, sourcestream, deststream,
@@ -670,7 +670,7 @@ class Loader:
                                   sourcenode, sourcebarcode)
         bc_dest = self.barcodes(deststream, expt, rec,
                                 destnode, destbarcode)
-        tm = timeMachine.TimeMachine(bc_dest, bc_source)
+        tm = timemachine.TimeMachine(bc_dest, bc_source)
         return tm.translatedata(data, t0)
 
     def nidaqevents(self, stream, expt=1, rec=1, node=None,
@@ -723,4 +723,4 @@ class Loader:
             List of numpy arrays samplestamps, one per block.
         '''
         fs = self.samplingrate(stream)
-        return timeMachine.inferblocks(ss, fs, t_split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
+        return timemachine.inferblocks(ss, fs, t_split_s=split_s, dropshort_ms=dropshort_ms, minblocklen=minblocklen)
