@@ -4,7 +4,7 @@ import numpy as np
 import os
 import glob
 
-import timeMachine
+from . import timeMachine
 
 
 def _populate(dct, *args):
