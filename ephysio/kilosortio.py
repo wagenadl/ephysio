@@ -76,8 +76,13 @@ class Reader:
                 rdr = csv.reader(f, delimiter='\t')
                 rows = [x for x in rdr]
                 hdr = rows[0]
-                idx = hdr.index('ch') # despite the header, DAW believes this
-                                      # is an electrode number, not a ks channel
+                if 'ch' in hdr:
+                    idx = hdr.index('ch') # despite the header, DAW believes this is an electrode number, not a ks channel
+                elif 'channel' in hdr:
+                    idx = hdr.index('channel')
+                else:
+                    raise Exception('cannot find channel/ch column in cluster_info.tsv header')
+                
                 for row in rows[1:]:
                     self.elc4clust[int(row[0])] = int(row[idx])
 
